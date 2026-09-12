@@ -1,0 +1,27 @@
+# Tutorials
+
+[![GitHub](https://img.shields.io/badge/GitHub-181717?style=flat&logo=github&logoColor=white)](https://github.com/kurtvalcorza/bert-masked-lm-pipeline)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/kurtvalcorza/bert-masked-lm-pipeline/blob/main/tutorials/bert_masked_lm_colab.ipynb)
+[![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-google--bert%2Fbert--base--uncased-ffcc4d?style=flat)](https://huggingface.co/google-bert/bert-base-uncased)
+[![Upstream](https://img.shields.io/badge/Upstream-google--research%2Fbert-181717?style=flat&logo=github&logoColor=white)](https://github.com/google-research/bert)
+[![arXiv](https://img.shields.io/badge/arXiv-1810.04805-b31b1b.svg)](https://arxiv.org/abs/1810.04805)
+
+Notebook specification: **DIMER Notebook Specification 1.0**
+
+| Notebook | Profile | Capability | Default runtime | BYOD | Release status |
+|---|---|---|---|---|---|
+| `bert_masked_lm_colab.ipynb` | `TASK-INFERENCE` | BERT-Base uncased fill-mask (ranked vocabulary-softmax candidates for one `[MASK]`, argmax rule, no threshold) and sentence embeddings (768-d, `cls`/`mean` pooling, L2-normalised, identifiers exported with vectors) on synthetic sentences authored in code; no metric exists or is reported for either | CPU float32 (CUDA used automatically when available, also float32) | one UTF-8 text file (cloze line + sentence lines), gated off by default | **Candidate** — static checks pass; the clean-runtime execution row in `../docs/release-verification.md` is pending and must be recorded for the exact notebook revision before promotion |
+
+## Conformance notes
+
+- The notebook exercises `BERTMaskedLMPipeline` from the repository public API rather than reimplementing model loading; the pipeline pins the immutable upstream revision, stages the missing snapshot file through the package's `stage_missing_files(..., allow_download=True)`, loads only from a digest-verified local snapshot (`verify_snapshot`), and refuses remote model code. The notebook never calls `transformers` or `huggingface_hub` directly.
+- Two capabilities in one `TASK-INFERENCE` notebook, each with its own stated input/output contract (INF10): `fill_mask` (Section 5) and `embed` (Section 6) share the model, the ceilings and the export, and neither produces an artifact.
+- Score semantics (UNC1–UNC4): the fill-mask `score` is a softmax over the 30,522-token vocabulary at the masked position — a ranking signal, not a calibrated probability; the default decision rule is `argmax` (first candidate); the pipeline ships no threshold and the caller owns any cut-off.
+- §20.6 embeddings: shape `(N, 768)` and the pooling policy (`cls` position or attention-masked `mean` of the last layer, then L2 normalisation) are stated; the unit is one vector per text; missing data has no meaning (empty strings are rejected, over-long texts are rejected rather than truncated); embeddings are representations, not predictions; identifiers are exported alongside vectors in `outputs/bert_masked_lm_embeddings.csv`.
+- No intrinsic metric exists (EVAL9): the repository ships no metric helper; the notebook says so for both capabilities, names what a real evaluation needs (a labelled cloze set for top-k hit rates; a judged similarity or retrieval set for Spearman/recall@k), and presents the expected-token check and the cosine table as falsifiable plumbing/qualitative checks only. The model card's smoke observations are quoted as one measurement, not expected values. Recorded `SHOULD` deviation: EVAL11 (no baseline — none is meaningful without labels).
+- Ceilings `MAX_TEXT_CHARS`, `MAX_TEXT_TOKENS` (reject, never truncate), `MAX_BATCH`, `MAX_TOP_K`, `MASK_TOKEN` (exactly one), `POOLINGS`, `VOCAB_SIZE`, `HIDDEN_SIZE` are surfaced before the model runs (DAT22/DAT23).
+- The default sample is synthetic text authored in code; `USE_BYOD` defaults to `False` so the sample path never opens an upload dialog.
+- `tools/validate_release_assets.py` performs source validation only. It does not satisfy the
+  clean-runtime execution requirement; a release review must confirm that a recorded clean run in
+  `docs/release-verification.md` matches the notebook revision under review before the status is
+  promoted to `Release-grade`.

@@ -56,11 +56,13 @@ print(pipe.fill_mask("The capital of France is [MASK].")["candidates"][0])
 
 ## Tutorials
 
-None yet. This release is the card pass; a `NOTEBOOK_SPEC` 1.0 `TASK-INFERENCE` tutorial is a follow-up.
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/kurtvalcorza/bert-masked-lm-pipeline/blob/main/tutorials/bert_masked_lm_colab.ipynb)
+
+`tutorials/bert_masked_lm_colab.ipynb` is declared `TASK-INFERENCE` (see `tutorials/README.md`). Its default path authors one synthetic cloze sentence and three sentences to embed, surfaces `MAX_TEXT_CHARS`/`MAX_TEXT_TOKENS`/`MAX_BATCH`/`MAX_TOP_K` and the single-`[MASK]` rule, stages the missing `model.safetensors` with `stage_missing_files(..., allow_download=True)` and digest-verifies the snapshot with `verify_snapshot`, runs `fill_mask` (argmax rule; softmax score, not a calibrated probability; no threshold) and `embed` (768-d, `mean` pooling by default, unit norm; representations, not predictions), prints a cosine table as a qualitative check, and exports identifiers alongside vectors (CSV) plus a provenance JSON. No metric is reported: the repository ships no metric helper and the sample carries no labels. BYOD is optional and gated off by default.
 
 ## Release status
 
-**Candidate / source-complete.** Pipeline package, offline unit tests, one CPU smoke run and the MODEL_CARD_SPEC 1.1 card exist; no tutorial notebook and no clean-runtime execution evidence yet. See `STATUS.md`.
+**Candidate.** Static/unit checks do not constitute clean-runtime notebook evidence. Complete `docs/release-verification.md` against the exact release revision before calling the notebook release-grade.
 
 ## Documents
 
