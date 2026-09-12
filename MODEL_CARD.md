@@ -20,7 +20,11 @@ base_model: google-bert/bert-base-uncased
 
 ## Interactive Colab Tutorials
 
-This release ships no tutorial notebook (`tutorials/` is absent). The package is exercised through its test suite (`tests/`) and the run instructions in the README; a `NOTEBOOK_SPEC` 1.0 `TASK-INFERENCE` notebook is a follow-up, not a claim this card makes.
+This pipeline provides a ready-to-run interactive Google Colab notebook that exercises the repository's public API end to end — bootstrap a fresh runtime, stage and verify the pinned upstream revision, validate an input, run the task, and inspect and export the outputs:
+
+- **Task Inference Tutorial**:  
+  [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/kurtvalcorza/bert-masked-lm-pipeline/blob/main/tutorials/bert_masked_lm_colab.ipynb) [`bert_masked_lm_colab.ipynb`](https://github.com/kurtvalcorza/bert-masked-lm-pipeline/blob/main/tutorials/bert_masked_lm_colab.ipynb)  
+  *Masked-token prediction and sentence embeddings with the pinned `google-bert/bert-base-uncased` weights: `fill_mask` ranks `[MASK]` candidates by softmax score (not a calibrated probability) and `embed` returns L2-normalised 768-d representations exported with their ids; no metric is reported.*
 
 ---
 
