@@ -3,6 +3,8 @@ license: apache-2.0
 model_card_spec: "1.1"
 pipeline_tag: fill-mask
 base_model: google-bert/bert-base-uncased
+date_published: "2018-10"
+date_published_source: "google-research/bert initial release, October 2018 (repository first commit 2018-10-25; arXiv:1810.04805 v1 2018-10-11); Hub history begins 2018-11-14"
 ---
 
 # BERT base uncased (DIMER package v0.1.0) — Masked Language Model (Fill-Mask & Sentence Embeddings)
@@ -11,7 +13,6 @@ base_model: google-bert/bert-base-uncased
 [![Upstream GitHub](https://img.shields.io/badge/Upstream%20GitHub-google--research%2Fbert-181717?style=flat&logo=github&logoColor=white)](https://github.com/google-research/bert)
 [![arXiv Paper](https://img.shields.io/badge/arXiv-1810.04805-b31b1b.svg)](https://arxiv.org/abs/1810.04805)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Pipeline](https://img.shields.io/badge/Pipeline-bert--masked--lm--pipeline-2ea44f?style=flat&logo=github)](https://github.com/kurtvalcorza/bert-masked-lm-pipeline)
 
 > [!WARNING]
 > ⚠️ **Provided for research, training, and evaluation purposes only.** Model weights are redistributed unmodified under their upstream license, which controls your use, including any commercial use or redistribution; the accompanying code and notebooks are released under this repository's license. All of it is supplied **"as is"**, without warranty of any kind, and has not been validated for production, clinical, or safety-critical use. Running the notebooks downloads third-party weights and datasets governed by their own licenses and consumes compute on your own Colab/Kaggle account. To the maximum extent permitted by law, the maintainers of this repository and the DIMER platform accept no liability for any damages arising from their use. Hosting implies no affiliation with or endorsement by the original authors.
@@ -28,7 +29,7 @@ This pipeline provides a ready-to-run interactive Google Colab notebook that exe
 
 ---
 
-###### Description
+#### Description
 
 `google-bert/bert-base-uncased` is the original BERT-Base uncased checkpoint released by Google Research (Devlin et al., arXiv:1810.04805), redistributed on the Hub by the Hugging Face team and pinned here to revision `86b5e0934494bd15c9632b12f734a8a67f723594`. It is a bidirectional Transformer encoder: 12 layers, hidden size 768, 12 attention heads, intermediate size 3072, absolute position embeddings up to 512 positions and a 30 522-entry WordPiece vocabulary (snapshot `config.json`), about 110 M parameters (upstream README table). It was pre-trained with two self-supervised objectives — masked language modelling (15 % of tokens masked, predict them) and next-sentence prediction — on lower-cased English text. At inference this package runs the encoder once per call and does one of two things: `fill_mask` reads the output-vocabulary logits at the single `[MASK]` position through the `BertForMaskedLM` head and ranks them by softmax; `embed` returns the encoder's last hidden states pooled to one 768-d vector per text. Nothing is fine-tuned, adapted or conditioned in this repository, and the next-sentence-prediction head and pooler weights present in the checkpoint are not loaded (the loader reports them unused). What this repository adds is packaging: the `BERTMaskedLMPipeline` class in `src/bert_masked_lm_pipeline/pipeline.py`, digest verification of the local snapshot (`verify_snapshot`, `stage_missing_files`), input validation against named ceilings, and a fixed output contract.
 
