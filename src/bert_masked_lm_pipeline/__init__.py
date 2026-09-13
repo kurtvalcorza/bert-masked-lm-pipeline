@@ -2,6 +2,7 @@ from .pipeline import (
     DEFAULT_TOP_K,
     DEFAULT_WEIGHTS_DIR,
     HIDDEN_SIZE,
+    INPUT_SCHEMA,
     MASK_TOKEN,
     MAX_BATCH,
     MAX_TEXT_CHARS,
@@ -14,7 +15,9 @@ from .pipeline import (
     POOLINGS,
     VOCAB_SIZE,
     BERTMaskedLMPipeline,
+    evaluation_report,
     stage_missing_files,
+    validate_inputs,
     verify_snapshot,
 )
 
@@ -22,6 +25,7 @@ __all__ = [
     "DEFAULT_TOP_K",
     "DEFAULT_WEIGHTS_DIR",
     "HIDDEN_SIZE",
+    "INPUT_SCHEMA",
     "MASK_TOKEN",
     "MAX_BATCH",
     "MAX_TEXT_CHARS",
@@ -34,6 +38,8 @@ __all__ = [
     "POOLINGS",
     "VOCAB_SIZE",
     "BERTMaskedLMPipeline",
+    "evaluation_report",
     "stage_missing_files",
+    "validate_inputs",
     "verify_snapshot",
 ]

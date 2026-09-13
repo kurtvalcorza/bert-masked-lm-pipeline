@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -119,6 +119,147 @@ def _check_text(text: Any, name: str) -> str:
     return text
 
 
+def _check_mask_count(text: str) -> str:
+    """`fill_mask` accepts exactly one [MASK]; raise naming the count found."""
+    if text.count(MASK_TOKEN) != 1:
+        raise ValueError(f"text must contain exactly one {MASK_TOKEN}, found {text.count(MASK_TOKEN)}")
+    return text
+
+
+def _check_top_k(top_k: Any) -> int:
+    if isinstance(top_k, bool) or not isinstance(top_k, int):
+        raise TypeError("top_k must be an int")
+    if not 1 <= top_k <= MAX_TOP_K:
+        raise ValueError(f"top_k must be between 1 and MAX_TOP_K={MAX_TOP_K}")
+    return top_k
+
+
+def _check_batch(texts: Any, pooling: Any) -> list[str]:
+    """`embed`'s batch contract; raise naming the first violated ceiling."""
+    if isinstance(texts, str | bytes) or not isinstance(texts, Sequence):
+        raise TypeError("texts must be a list of str, not a single string")
+    if not 1 <= len(texts) <= MAX_BATCH:
+        raise ValueError(f"texts must hold 1..MAX_BATCH={MAX_BATCH} items, got {len(texts)}")
+    clean = [_check_text(t, f"texts[{i}]") for i, t in enumerate(texts)]
+    if pooling not in POOLINGS:
+        raise ValueError(f"pooling must be one of {POOLINGS}")
+    return clean
+
+
+INPUT_SCHEMA: dict[str, Any] = {
+    "input": (
+        "sequence of non-empty str; every entry carrying a [MASK] token is also a fill_mask input, "
+        "every entry is an embed input (one vector per text)"
+    ),
+    "batch": [1, MAX_BATCH],
+    "text_chars": [1, MAX_TEXT_CHARS],
+    "text_tokens": [1, MAX_TEXT_TOKENS],
+    "top_k": [1, MAX_TOP_K],
+    "pooling": list(POOLINGS),
+    "mask_token": MASK_TOKEN,
+    "masks_per_fill_mask_text": 1,
+    "vocab_size": VOCAB_SIZE,
+    "embedding_dim": HIDDEN_SIZE,
+    "preprocessing": (
+        "WordPiece tokenisation that lower-cases and strips accents; texts past MAX_TEXT_TOKENS are "
+        "rejected, never truncated, so a [MASK] can never be silently lost; embed pools the last "
+        "layer (cls position or attention-masked mean) and L2-normalises"
+    ),
+}
+
+
+def validate_inputs(
+    texts: Sequence[str],
+    *,
+    top_k: int = DEFAULT_TOP_K,
+    pooling: str = "cls",
+    names: Sequence[str] | None = None,
+) -> dict[str, Any]:
+    """Validation stage: return the input manifest (schema, per-input observations, verdict).
+
+    ``texts`` is the batch ``embed`` would take; every entry that carries a ``[MASK]`` token is
+    additionally checked against ``fill_mask``'s contract (exactly one mask, ``top_k`` in range) and
+    marked in the manifest. Both capabilities' checks run through the same private functions the
+    methods use — ``_check_batch``/``_check_text`` for ``embed``, ``_check_mask_count``/``_check_top_k``
+    for ``fill_mask`` — so a rejection here is a rejection there. ``MAX_TEXT_TOKENS`` is enforced
+    after tokenisation inside the pipeline and therefore cannot be observed at this stage.
+    """
+    checked = _check_batch(texts, pooling)
+    _check_top_k(top_k)
+    if names is not None and len(names) != len(checked):
+        raise ValueError("names must have one entry per text")
+    inputs = []
+    for i, text in enumerate(checked):
+        masks = text.count(MASK_TOKEN)
+        if masks:
+            _check_mask_count(text)
+        inputs.append(
+            {
+                "id": names[i] if names else f"text-{i}",
+                "chars": len(text),
+                "masks": masks,
+                "fill_mask_input": bool(masks),
+            }
+        )
+    return {
+        "schema": dict(INPUT_SCHEMA),
+        "inputs": inputs,
+        "top_k": top_k,
+        "pooling": pooling,
+        "verdict": "accepted",
+        "findings": [],
+        "model_id": MODEL_ID,
+        "model_revision": MODEL_REVISION,
+    }
+
+
+def evaluation_report(
+    result: Mapping[str, Any], expected_tokens: Sequence[str] | None = None, *, sample_kind: str = "synthetic"
+) -> dict[str, Any]:
+    """Evaluation stage: a machine-readable report even though no metric exists here.
+
+    Neither capability has a metric helper in this repository, so the verdict is always
+    ``not-measurable`` (EVAL9). ``expected_tokens`` exists for interface parity with the fleet's
+    other pipelines and is recorded in ``reason`` rather than scored: one author-expected token is
+    an intent, not a labelled cloze set, and computing a hit rate from it would present a single
+    observation as an accuracy. ``result`` is the ``fill_mask`` result; the embedding half is a
+    representation and is covered by the same verdict.
+    """
+    candidates = result.get("candidates", [])
+    supplied = expected_tokens is not None
+    return {
+        "task": "masked-language modelling (fill-mask) and sentence embedding",
+        "score_semantics": (
+            f"fill_mask `score` is a softmax over the {VOCAB_SIZE}-token vocabulary at the masked "
+            "position — a ranking signal, not a calibrated probability, with argmax as the decision "
+            f"rule and no shipped threshold; embed returns {HIDDEN_SIZE}-d unit vectors whose only "
+            "meaning is cosine within the same model and pooling policy"
+        ),
+        "sample_kind": sample_kind,
+        "n_candidates": len(candidates),
+        "metrics": [],
+        "baselines": [],
+        "verdict": "not-measurable",
+        "reason": (
+            "the repository ships no metric helper for either capability"
+            + (
+                "; an expected token was supplied, but one author-expected token is an intent rather "
+                "than a labelled cloze set, so scoring it would present a single observation as an accuracy"
+                if supplied
+                else "; the evaluated sample carries no gold tokens and no similarity labels"
+            )
+        ),
+        "needs": (
+            "for fill-mask, a labelled cloze set (sentence, mask position, gold token) over enough "
+            "sentences to state a dispersion, scored with the caller's own top-1/top-k hit-rate code; "
+            "for the embeddings, a judged similarity set (Spearman correlation) or a retrieval or "
+            "clustering set with relevance labels (recall@k) — neither of which this repository ships"
+        ),
+        "model_id": MODEL_ID,
+        "model_revision": MODEL_REVISION,
+    }
+
+
 @dataclass
 class BERTMaskedLMPipeline:
     """``_mask_runner`` maps one text to (vocab logits at the [MASK] position, n_tokens);
@@ -187,13 +328,8 @@ class BERTMaskedLMPipeline:
 
     def fill_mask(self, text: str, top_k: int = DEFAULT_TOP_K) -> dict[str, Any]:
         """Rank candidates for exactly one ``[MASK]``; ``score`` is a softmax over the 30 522-token vocab."""
-        text = _check_text(text, "text")
-        if text.count(MASK_TOKEN) != 1:
-            raise ValueError(f"text must contain exactly one {MASK_TOKEN}, found {text.count(MASK_TOKEN)}")
-        if isinstance(top_k, bool) or not isinstance(top_k, int):
-            raise TypeError("top_k must be an int")
-        if not 1 <= top_k <= MAX_TOP_K:
-            raise ValueError(f"top_k must be between 1 and MAX_TOP_K={MAX_TOP_K}")
+        text = _check_mask_count(_check_text(text, "text"))
+        top_k = _check_top_k(top_k)
         logits, n_tokens = self._mask_runner(text)
         logits = np.asarray(logits, dtype=np.float64)
         if logits.shape != (VOCAB_SIZE,):
@@ -222,13 +358,7 @@ class BERTMaskedLMPipeline:
 
     def embed(self, texts: Sequence[str], pooling: str = "cls") -> dict[str, Any]:
         """L2-normalised 768-d representations: CLS token or attention-masked mean of the last layer."""
-        if isinstance(texts, str | bytes) or not isinstance(texts, Sequence):
-            raise TypeError("texts must be a list of str, not a single string")
-        if not 1 <= len(texts) <= MAX_BATCH:
-            raise ValueError(f"texts must hold 1..MAX_BATCH={MAX_BATCH} items, got {len(texts)}")
-        clean = [_check_text(t, f"texts[{i}]") for i, t in enumerate(texts)]
-        if pooling not in POOLINGS:
-            raise ValueError(f"pooling must be one of {POOLINGS}")
+        clean = _check_batch(texts, pooling)
         hidden, mask = self._embed_runner(clean)
         hidden = np.asarray(hidden, dtype=np.float32)
         mask = np.asarray(mask, dtype=np.float32)

@@ -1,15 +1,18 @@
-"""Static release-asset validation for the BERT-Base uncased masked-LM / embedding DIMER pipeline.
+"""Static release-asset validation for the BERT-Base uncased masked-LM DIMER pipeline.
 
-Checks the tutorial notebook, tutorial registry, model card, README, STATUS.md and
-weight documentation for DIMER Notebook Specification 1.0 / Model Card Specification 1.1
-source conformance and cross-document identity consistency.
+Checks the STANDALONE tutorial notebook (DIMER Notebook Specification 1.1 §3.6), the tutorial
+registry, model card, README, STATUS.md and weight documentation for source conformance and
+cross-document identity consistency, and runs the generator parity checks (PAR1–PAR3).
 
 This is source validation only. A PASS here is NOT clean-runtime execution evidence;
 the release gate is defined in docs/release-verification.md.
 """
+# ruff: noqa: E501  -- rule messages name the file and requirement in full; they are kept on one line
 from __future__ import annotations
 
 import ast
+import hashlib
+import importlib.util
 import io
 import json
 import re
@@ -22,92 +25,79 @@ REPO_NAME = "bert-masked-lm-pipeline"
 NOTEBOOK_NAME = "bert_masked_lm_colab.ipynb"
 EXPECTED_PROFILE = "TASK-INFERENCE"
 EXPECTED_MODEL_ID = "google-bert/bert-base-uncased"
+PIPELINE_CLASS = "BERTMaskedLMPipeline"
 # Additional 40-hex revisions a document may legitimately cite (none by default).
 KNOWN_SHAS: frozenset[str] = frozenset(())
 # Colab form gates that must default to the non-interactive sample path.
-BYOD_GATES = ('USE_BYOD',)
-# Machine-readable artifacts the notebook must write.
+BYOD_GATES = ("USE_BYOD",)
+# Machine-readable artifacts the notebook must write (OUT1-OUT3, DAT24, EVAL21).
 EXPECTED_OUTPUTS = (
-    'outputs/bert_masked_lm_result.json',
-    'outputs/bert_masked_lm_embeddings.csv',
+    "outputs/bert_masked_lm_input_manifest.json",
+    "outputs/bert_masked_lm_evaluation_report.json",
+    "outputs/bert_masked_lm_result.json",
+    "outputs/bert_masked_lm_embeddings.csv",
 )
-# Profile-specific code the notebook must exercise through the repository public API.
+# Profile-specific code the notebook must exercise through the carried module's public API.
 CODE_MARKERS = (
-    'from bert_masked_lm_pipeline import DEFAULT_TOP_K, HIDDEN_SIZE, MASK_TOKEN, MAX_BATCH, '
-    'MAX_TEXT_CHARS, MAX_TEXT_TOKENS, MAX_TOP_K, POOLINGS, VOCAB_SIZE',
-    'from bert_masked_lm_pipeline import MODEL_ID, MODEL_KEY, MODEL_REVISION, BERTMaskedLMPipeline, '
-    'stage_missing_files, verify_snapshot',
-    "WEIGHTS_DIR = ROOT / 'weights' / MODEL_KEY",
-    'fetched = stage_missing_files(WEIGHTS_DIR, allow_download=True)',
-    'snapshot = verify_snapshot(WEIGHTS_DIR)',
-    'pipe = BERTMaskedLMPipeline.from_pretrained(weights_dir=WEIGHTS_DIR)',
-    'filled = pipe.fill_mask(cloze, top_k=TOP_K)',
-    'embedding_result = pipe.embed(sentences, pooling=POOLING)',
-    "ceilings = {'MAX_TEXT_CHARS': MAX_TEXT_CHARS, 'MAX_TEXT_TOKENS': MAX_TEXT_TOKENS, "
-    "'MAX_BATCH': MAX_BATCH, 'MAX_TOP_K': MAX_TOP_K, 'VOCAB_SIZE': VOCAB_SIZE, "
-    "'HIDDEN_SIZE': HIDDEN_SIZE, 'MASK_TOKEN': MASK_TOKEN, 'POOLINGS': POOLINGS, "
-    "'DEFAULT_TOP_K': DEFAULT_TOP_K}",
-    'if cloze.count(MASK_TOKEN) != 1:',
-    "raise ValueError('input rejected before model execution: '",
+    "input_manifest = validate_inputs([cloze, *sentences], top_k=TOP_K, pooling=POOLING, names=['cloze', *sentence_ids])",
+    "validate_inputs([f'A {MASK_TOKEN} and another {MASK_TOKEN}.'], top_k=TOP_K, pooling=POOLING)",
+    "filled = pipe.fill_mask(cloze, top_k=TOP_K)",
+    "embedding_result = pipe.embed(sentences, pooling=POOLING)",
+    "report = evaluation_report(filled, expected_tokens, sample_kind=sample_kind)",
+    "ceilings = {'MAX_TEXT_CHARS': MAX_TEXT_CHARS, 'MAX_TEXT_TOKENS': MAX_TEXT_TOKENS, 'MAX_BATCH': MAX_BATCH, 'MAX_TOP_K': MAX_TOP_K, 'VOCAB_SIZE': VOCAB_SIZE, 'HIDDEN_SIZE': HIDDEN_SIZE, 'MASK_TOKEN': MASK_TOKEN, 'POOLINGS': POOLINGS, 'DEFAULT_TOP_K': DEFAULT_TOP_K}",
     "'scores_descending': all(a >= b for a, b in zip(scores, scores[1:], strict=False))",
     "'one_vector_per_text': vectors.shape == (len(sentences), HIDDEN_SIZE)",
     "sentence_ids = [f's{index + 1}' for index in range(len(sentences))]",
     "writer.writerow(['id', 'n_tokens', 'pooling'] + [f'e{i:04d}' for i in range(HIDDEN_SIZE)])",
-    "'decision_rule': 'argmax (first candidate); score is a vocabulary softmax, "
-    "not a calibrated probability; no threshold shipped'",
-    "'model_revision'",
-    'transformers.__version__',
+    "'decision_rule': 'argmax (first candidate); score is a vocabulary softmax, not a calibrated probability; no threshold shipped'",
+    "'model_revision': MODEL_REVISION",
+    "'model_license': MODEL_LICENSE",
+    "transformers.__version__",
     "'device': pipe.device",
 )
 # Profile-specific learner-facing statements.
 MARKDOWN_MARKERS = (
-    '**Capability:** masked-language modelling (fill-mask: ranked candidates for one `[MASK]`) '
-    'and sentence embeddings',
-    '**No adaptation occurs:**',
-    '**The fill-mask `score` is not a calibrated probability**',
-    '**Embeddings are representations, not predictions:**',
-    '**default decision rule is `argmax`**',
-    '**no metric helper and reports no performance measure**',
-    '**no metric is reported**',
-    '**No intrinsic metric exists** for an embedding',
-    'The unit of embedding is **one vector per text**',
-    'Missing data has no meaning here: empty strings are rejected, not embedded.',
-    'as a **qualitative check** that the contract works',
-    '`MAX_TEXT_TOKENS` (512, the checkpoint\'s position limit) is applied after tokenisation '
-    'and **rejects** longer texts rather than truncating them',
-    'fine-tuning or classification heads, next-sentence prediction, multi-mask filling',
-    '**Input/output contract.** `fill_mask(text, top_k=...)`',
-    '**Input/output contract.** `embed(texts, pooling=...)`',
+    "**Capability:** masked-language modelling (fill-mask: ranked candidates for one `[MASK]`) and sentence embeddings",
+    "**No adaptation occurs:**",
+    "**The fill-mask `score` is not a calibrated probability**",
+    "**Embeddings are representations, not predictions:**",
+    "**default decision rule is `argmax`**",
+    "**no metric helper and reports no performance measure**",
+    "the verdict is always `not-measurable`",
+    "**No intrinsic metric exists** for an embedding",
+    "The unit of embedding is **one vector per text**",
+    "Missing data has no meaning here: empty strings are rejected, not embedded.",
+    "as a **qualitative check** that the contract works",
+    "**rejects** longer texts rather than truncating them",
+    "fine-tuning or classification heads, next-sentence prediction, multi-mask filling",
+    "**Input/output contract.** `fill_mask(text, top_k=...)`",
+    "**Input/output contract.** `embed(texts, pooling=...)`",
 )
-FORBIDDEN_CODE_EXTRA = (
-    'from transformers import',
-    'import transformers.',
-    'BertForMaskedLM',
-    'AutoTokenizer',
-    'AutoModel',
-    'from huggingface_hub import',
-    'import huggingface_hub',
-    'from_pretrained(allow_download=True)',
+# Direct-library use that must stay inside the carried module cell (G2: the notebook calls the
+# pipeline API, it does not reimplement it). Checked on every code cell except the embedded one.
+FORBIDDEN_OUTSIDE_MODULE = (
+    "from huggingface_hub import",
+    "import huggingface_hub",
+    "hf_hub_download(",
+    "from transformers import",
+    "import transformers.",
+    "AutoTokenizer",
+    "BertForMaskedLM",
+    "softmax(",
 )
 
 # ---------------------------------------------------------------------------
 # Shared checks. Everything below is source/structure validation only. Passing
 # these checks is NOT clean-runtime execution evidence under DIMER Notebook
-# Specification 1.0; see docs/release-verification.md for the release gate.
-#
-# Structural rules (BYOD gate, identity import, stale-import guard, forbidden
-# install/trust forms) are checked on the parsed AST or on comment-stripped
-# source, so a marker hidden in a comment or an alternative spelling does not
-# satisfy or evade them.
+# Specification 1.1; see docs/release-verification.md for the release gate.
 # ---------------------------------------------------------------------------
 
+NOTEBOOK_SPEC = "1.1"
 ALLOWED_PROFILES = {"E2E", "ARTIFACT-INFERENCE", "TASK-INFERENCE", "MULTI-CAPABILITY", "SMOKE"}
 STATUS_TOKENS = ("Candidate", "Release-grade")
 PLACEHOLDER = re.compile(r"\b(TODO|TBD|FIXME)\b|Insert text here|Tooltip:", re.I)
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
-IDENTITY_NAMES = ("MODEL_ID", "MODEL_REVISION")
-# Affirmative claims that tutorial execution cannot support (Notebook Spec: no unsupported
-# release-grade, benchmark, or deployment claims). Negated/comparative phrasing is allowed.
+IDENTITY_NAMES = ("MODEL_ID", "MODEL_REVISION", "MODEL_LICENSE", "MODEL_KEY")
 UNSUPPORTED_CLAIMS = re.compile(
     r"\b(production[- ]ready|battle[- ]tested|state[- ]of[- ]the[- ]art results (were|are) reproduced"
     r"|benchmark superiority (is|was) (shown|established)|is release-grade|now release-grade)\b",
@@ -134,43 +124,53 @@ REQUIRED_CARD_HEADINGS = [
     (6, "Risks and harms"),
     (6, "Use cases"),
 ]
-# Markers every DIMER tutorial in this fleet must carry, independent of profile. Matched on
-# comment-stripped code, so a commented-out call does not count.
+# Markers every standalone DIMER tutorial in this fleet must carry, independent of profile.
+# Matched on comment-stripped code, so a commented-out call does not count.
 COMMON_CODE_MARKERS = (
-    "REPO_REF = os.environ.get('DIMER_TUTORIAL_REF', 'main')",
-    "if not (ROOT / 'pyproject.toml').exists():",
-    "'git', 'clone'",
-    "'checkout', '--detach', 'FETCH_HEAD'",
-    "REPO_SHA = subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip()",
+    "PINS = [",
+    "NOTEBOOK_SOURCE = {",
+    "SKIP_INSTALL = os.environ.get('DIMER_NOTEBOOK_CI_PREINSTALLED') == '1'",
+    "subprocess.run([sys.executable, '-m', 'pip', 'install', '-q', *PINS], check=True)",
     "importlib.metadata.packages_distributions()",
     "importlib.invalidate_caches()",
     "platform.python_version()",
     "torch.__version__",
-    "'repository_revision': REPO_SHA",
+    "MANIFEST = {",
+    "if (MANIFEST['modelId'], MANIFEST['revision']) != (MODEL_ID, MODEL_REVISION):",
+    "WEIGHTS_DIR = DEFAULT_WEIGHTS_DIR",
+    "json.dump(MANIFEST, handle, indent=2)",
+    "fetched = stage_missing_files(WEIGHTS_DIR, allow_download=True)",
+    "snapshot = verify_snapshot(WEIGHTS_DIR)",
+    "'repository_revision': NOTEBOOK_SOURCE['repository_revision']",
+    "'notebook_source': NOTEBOOK_SOURCE",
     "os.makedirs('outputs', exist_ok=True)",
     "from google.colab import files",
     "files.upload()",
 )
 COMMON_MARKDOWN_MARKERS = (
-    "**Notebook specification:** DIMER Notebook Specification 1.0",
+    f"**Notebook specification:** DIMER Notebook Specification {NOTEBOOK_SPEC} — **standalone** (§3.6)",
+    "**This notebook is standalone.**",
     "**Learning objectives:**",
     "## Prerequisites",
     "Do not upload confidential or restricted",
-    "## 1. Bootstrap the repository and pinned runtime",
-    "`DIMER_TUTORIAL_REF`",
+    "- **External access:** the Hugging Face Hub only",
+    "## 1. Install the pinned runtime",
+    "## 2. Pipeline code (carried verbatim from",
+    "## 3. Pin, stage and verify the model",
     "## Interpretation and limits",
     "Successful execution proves that the recorded repository revision",
+    "without the repository being",
     "It does **not** establish benchmark superiority",
     "## References",
-    "- Repository model card: `../MODEL_CARD.md`",
+    f"- Repository model card: https://github.com/kurtvalcorza/{REPO_NAME}/blob/main/MODEL_CARD.md",
 )
-# Patterns that must never appear in tutorial code (comment-stripped): credential-in-URL,
-# unpinned trust, unsafe deserialization, notebook magics (the executable harness runs plain
-# Python), and an editable self-install in any spelling, which is not importable in the same
-# interpreter until it restarts.
+# Patterns that must never appear in tutorial code (comment-stripped), in any cell.
 FORBIDDEN_PATTERNS = (
     ("credential in clone URL", re.compile(r"https://[^/'\"\s]*@github\.com/|x-access-token:")),
+    ("repository clone (ST1)", re.compile(r"\bgit\b[^\n]*\bclone\b|github\.com")),
     ("editable self-install", re.compile(r"""['"](?:-e|--editable)['"]|pip install (?:-e|--editable)\b""")),
+    ("repository package import (ST1)", re.compile(rf"^\s*(?:from|import)\s+{PACKAGE}\b", re.M)),
+    ("mutable model reference (MOD14)", re.compile(r"revision\s*=\s*['\"](?:main|latest)['\"]")),
     ("trust_remote_code enabled", re.compile(r"trust_remote_code\s*[=:]\s*True")),
     (
         "unsafe deserialization",
@@ -238,6 +238,14 @@ def _assignment_targets(node: ast.AST):
             if isinstance(sub, ast.Name):
                 names.append(sub.id)
     return names
+
+
+def _load_tool(name: str):
+    spec = importlib.util.spec_from_file_location(name, ROOT / "tools" / f"{name}.py")
+    _check(spec is not None and spec.loader is not None, f"tools/{name}.py is required")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)  # type: ignore[union-attr]
+    return module
 
 
 def _package_identity() -> tuple[str, str]:
@@ -336,10 +344,22 @@ def _validate_notebook_structure(path: Path, notebook: dict) -> tuple[list[tuple
     profile = dimer.get("notebook_profile")
     _check(profile in ALLOWED_PROFILES, f"{path.name}: invalid metadata.dimer.notebook_profile {profile!r}")
     _check(profile == EXPECTED_PROFILE, f"{path.name}: profile {profile!r} != declared {EXPECTED_PROFILE!r}")
-    # NOTEBOOK_SPEC prescribes the profile declaration but not the spec-version key; accept the
-    # `notebook_spec` spelling used here and the `_version` spelling used by sibling repositories.
     spec = dimer.get("notebook_spec", dimer.get("notebook_spec_version"))
-    _check(spec == "1.0", f"{path.name}: metadata.dimer must declare notebook spec version '1.0'")
+    _check(spec == NOTEBOOK_SPEC, f"{path.name}: metadata.dimer must declare notebook spec version '{NOTEBOOK_SPEC}'")
+    _check(dimer.get("standalone") is True, f"{path.name}: metadata.dimer.standalone must be true (ST6)")
+    generated = dimer.get("generated_from")
+    _check(isinstance(generated, dict), f"{path.name}: metadata.dimer.generated_from is required (ST5)")
+    _check(generated.get("repository") == REPO_NAME, f"{path.name}: generated_from.repository must be {REPO_NAME}")
+    _check(
+        generated.get("module") == f"src/{PACKAGE}/pipeline.py",
+        f"{path.name}: generated_from.module must be src/{PACKAGE}/pipeline.py",
+    )
+    module_sha = hashlib.sha256(_read(ROOT / "src" / PACKAGE / "pipeline.py").encode("utf-8")).hexdigest()
+    _check(
+        generated.get("module_sha256") == module_sha,
+        f"{path.name}: generated_from.module_sha256 does not match src/ (PAR4: regenerate the notebook)",
+    )
+    _check(bool(generated.get("generator")), f"{path.name}: generated_from.generator is required")
     cells = notebook.get("cells", [])
     _check(
         bool(cells) and cells[0].get("cell_type") == "markdown",
@@ -405,22 +425,61 @@ def _validate_gates(path: Path, code_cells: list[tuple[int, str, ast.Module]]) -
                 )
 
 
-def _validate_identity_import(
-    path: Path, code_cells: list[tuple[int, str, ast.Module]], revision: str
+def _validate_embedded_module(path: Path, notebook: dict, build) -> int:
+    """PAR1: exactly one tagged cell, equal to the module after the documented rewrites."""
+    tagged = [
+        (index, cell)
+        for index, cell in enumerate(notebook.get("cells", []))
+        if cell.get("cell_type") == "code" and cell.get("metadata", {}).get("dimer", {}).get("embedded_module")
+    ]
+    _check(len(tagged) == 1, f"{path.name}: exactly one cell must be tagged metadata.dimer.embedded_module (ST2)")
+    index, cell = tagged[0]
+    _check(
+        cell["metadata"]["dimer"]["embedded_module"] == f"src/{PACKAGE}/pipeline.py",
+        f"{path.name}: embedded_module tag must name src/{PACKAGE}/pipeline.py",
+    )
+    expected = build.apply_rewrites(_read(ROOT / "src" / PACKAGE / "pipeline.py"))
+    _check(
+        _cell_source(cell).rstrip("\n") + "\n" == expected,
+        f"{path.name}: embedded module differs from src/{PACKAGE}/pipeline.py (PAR1); regenerate the notebook",
+    )
+    return index
+
+
+def _validate_identity(
+    path: Path, code_cells: list[tuple[int, str, ast.Module]], embedded_index: int, revision: str
 ) -> None:
-    """MODEL_ID/MODEL_REVISION come from the package import only; nothing rebinds them."""
-    imported = False
+    """Identity constants are bound in the carried module only; nothing outside rebinds them."""
     for index, _source, tree in code_cells:
+        if index == embedded_index:
+            continue
         for node in ast.walk(tree):
-            if isinstance(node, ast.ImportFrom) and node.module == PACKAGE:
-                names = {alias.asname or alias.name for alias in node.names}
-                if set(IDENTITY_NAMES) <= names:
-                    imported = True
             rebound = [name for name in _assignment_targets(node) if name in IDENTITY_NAMES]
-            _check(not rebound, f"{path.name}: {rebound} must not be rebound (cell {index})")
-    _check(imported, f"{path.name}: must import MODEL_ID and MODEL_REVISION from {PACKAGE}")
-    raw_code = "\n".join(source for _, source, _ in code_cells)
-    _check(revision not in raw_code, f"{path.name}: model revision must be imported, not hard-coded")
+            _check(not rebound, f"{path.name}: {rebound} must not be rebound outside the module cell (cell {index})")
+    outside = "\n".join(source for index, source, _ in code_cells if index != embedded_index)
+    manifest_block = re.search(r"^MANIFEST = (\{.*?^\})$", outside, re.M | re.S)
+    _check(manifest_block is not None, f"{path.name}: model cell must carry an inline MANIFEST literal (ST3)")
+    outside_without_manifest = outside.replace(manifest_block.group(0), "")
+    _check(
+        revision not in outside_without_manifest,
+        f"{path.name}: the model revision may appear only in the carried module and the inline manifest",
+    )
+
+
+def _validate_parity(path: Path, notebook: dict, code_cells: list[tuple[int, str, ast.Module]], build) -> None:
+    """PAR2/PAR3: inline manifest and pins equal the repository's; the generator reproduces the file."""
+    template = _load_tool("notebook_template").TEMPLATE
+    code = "\n".join(source for _, source, _ in code_cells)
+    manifest = json.loads(_read(ROOT / "weights" / template["weights_key"] / "dimer-base-manifest.json"))
+    inline = re.search(r"^MANIFEST = (\{.*?^\})$", code, re.M | re.S)
+    _check(inline is not None and json.loads(inline.group(1)) == manifest, f"{path.name}: inline MANIFEST != committed manifest (PAR2)")
+    pins_block = re.search(r"^PINS = \[(.*?)^\]", code, re.M | re.S)
+    _check(pins_block is not None, f"{path.name}: install cell must carry PINS = [...] (ENV2)")
+    _check(re.findall(r"'([^']+)'", pins_block.group(1)) == build._pins(ROOT), f"{path.name}: inline PINS != pyproject runtime pins (PAR2)")
+    recorded = notebook["metadata"]["dimer"]["generated_from"]["revision"]
+    rendered = build.to_bytes(build.render(ROOT, template, recorded))
+    current = path.read_bytes().replace(b"\r\n", b"\n")  # autocrlf checkouts are CRLF
+    _check(current == rendered, f"{path.name}: differs from tools/build_notebook.py output (PAR3); regenerate")
 
 
 def _validate_bootstrap_guard(path: Path, code_cells: list[tuple[int, str, ast.Module]]) -> None:
@@ -434,26 +493,27 @@ def _validate_bootstrap_guard(path: Path, code_cells: list[tuple[int, str, ast.M
                         func = sub.exc.func
                         if isinstance(func, ast.Name) and func.id == "RuntimeError":
                             raises = True
-    _check(raises, f"{path.name}: bootstrap must raise RuntimeError when already-imported packages change")
+    _check(raises, f"{path.name}: install cell must raise RuntimeError when already-imported packages change")
 
 
 def _validate_notebook_content(
-    path: Path, code_cells: list[tuple[int, str, ast.Module]], markdown: str
+    path: Path, code_cells: list[tuple[int, str, ast.Module]], markdown: str, embedded_index: int
 ) -> None:
-    model_id, revision = _package_identity()
-    code = "\n".join(_strip_comments(source) for _, source, _ in code_cells)
-    _check(
-        f"REPO_URL = 'https://github.com/kurtvalcorza/{REPO_NAME}.git'" in code,
-        f"{path.name}: bootstrap must clone this repository by its canonical URL",
-    )
-    _check(f"REPO_NAME = '{REPO_NAME}'" in code, f"{path.name}: REPO_NAME must be {REPO_NAME}")
+    model_id, _revision = _package_identity()
+    stripped = {index: _strip_comments(source) for index, source, _ in code_cells}
+    code = "\n".join(stripped.values())
+    outside = "\n".join(text for index, text in stripped.items() if index != embedded_index)
     missing = [marker for marker in COMMON_CODE_MARKERS + CODE_MARKERS if marker not in code]
     _check(not missing, f"{path.name}: missing required source markers: {missing}")
     present = [label for label, pattern in FORBIDDEN_PATTERNS if pattern.search(code)]
-    extra = [marker for marker in FORBIDDEN_CODE_EXTRA if marker in code]
-    _check(not present and not extra, f"{path.name}: forbidden/insecure source: {present + extra}")
+    _check(not present, f"{path.name}: forbidden/insecure source: {present}")
+    leaked = [marker for marker in FORBIDDEN_OUTSIDE_MODULE if marker in outside]
+    _check(not leaked, f"{path.name}: direct library use outside the carried module cell (G2): {leaked}")
+    _check(
+        f"pipe = {PIPELINE_CLASS}.from_pretrained(weights_dir=WEIGHTS_DIR)" in outside,
+        f"{path.name}: must load through {PIPELINE_CLASS}.from_pretrained(weights_dir=WEIGHTS_DIR) (INF1)",
+    )
     _validate_gates(path, code_cells)
-    _validate_identity_import(path, code_cells, revision)
     _validate_bootstrap_guard(path, code_cells)
     for filename in EXPECTED_OUTPUTS:
         _check(filename in code, f"{path.name}: must export {filename}")
@@ -469,13 +529,22 @@ def validate_notebooks() -> None:
     _check(len(notebooks) == 1, f"exactly one tutorial notebook is expected, found {len(notebooks)}")
     path = notebooks[0]
     _check(path.name == NOTEBOOK_NAME, f"tutorial notebook must be named {NOTEBOOK_NAME}, found {path.name}")
+    build = _load_tool("build_notebook")
     notebook = json.loads(_read(path))
     code_cells, markdown = _validate_notebook_structure(path, notebook)
-    _validate_notebook_content(path, code_cells, markdown)
+    embedded_index = _validate_embedded_module(path, notebook, build)
+    _model_id, revision = _package_identity()
+    _validate_identity(path, code_cells, embedded_index, revision)
+    _validate_parity(path, notebook, code_cells, build)
+    _validate_notebook_content(path, code_cells, markdown, embedded_index)
     registry = _read(tutorials / "README.md")
     _check(f"`{path.name}`" in registry, f"{path.name} missing from tutorials/README.md")
     _check(f"`{EXPECTED_PROFILE}`" in registry, f"tutorials/README.md must record `{EXPECTED_PROFILE}`")
-    _check("DIMER Notebook Specification 1.0" in registry, "tutorials/README.md must name the notebook spec")
+    _check(
+        f"DIMER Notebook Specification {NOTEBOOK_SPEC}" in registry,
+        "tutorials/README.md must name the notebook spec version",
+    )
+    _check("standalone" in registry.lower(), "tutorials/README.md must record that the notebook is standalone")
 
 
 def validate_all() -> list[str]:
@@ -483,7 +552,7 @@ def validate_all() -> list[str]:
     validate_identity_consistency()
     validate_release_status()
     validate_notebooks()
-    return ["model-card", "identity-consistency", "release-status", "notebook"]
+    return ["model-card", "identity-consistency", "release-status", "notebook+parity"]
 
 
 def main() -> int:
