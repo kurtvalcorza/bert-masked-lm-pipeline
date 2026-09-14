@@ -2,6 +2,7 @@
 license: apache-2.0
 model_card_spec: "1.1"
 pipeline_tag: fill-mask
+task: "Others - Masked Language Modeling"
 base_model: google-bert/bert-base-uncased
 date_published: "2018-10"
 date_published_source: "google-research/bert initial release, October 2018 (repository first commit 2018-10-25; arXiv:1810.04805 v1 2018-10-11); Hub history begins 2018-11-14"
