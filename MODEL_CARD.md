@@ -7,7 +7,7 @@ date_published: "2018-10"
 date_published_source: "google-research/bert initial release, October 2018 (repository first commit 2018-10-25; arXiv:1810.04805 v1 2018-10-11); Hub history begins 2018-11-14"
 ---
 
-# BERT base uncased (DIMER package v0.1.0) — Masked Language Model (Fill-Mask & Sentence Embeddings)
+# BERT base uncased — Masked Language Model (Fill-Mask & Sentence Embeddings)
 
 [![Hugging Face](https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-google--bert%2Fbert--base--uncased-ffcc4d?style=flat)](https://huggingface.co/google-bert/bert-base-uncased)
 [![Upstream GitHub](https://img.shields.io/badge/Upstream%20GitHub-google--research%2Fbert-181717?style=flat&logo=github&logoColor=white)](https://github.com/google-research/bert)
