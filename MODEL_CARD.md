@@ -3,6 +3,8 @@ license: apache-2.0
 model_card_spec: "1.1"
 pipeline_tag: fill-mask
 base_model: google-bert/bert-base-uncased
+date_published: "2018-10"
+date_published_source: "google-research/bert initial release, October 2018 (repository first commit 2018-10-25; arXiv:1810.04805 v1 2018-10-11); Hub history begins 2018-11-14"
 ---
 
 # BERT base uncased (DIMER package v0.1.0) — Masked Language Model (Fill-Mask & Sentence Embeddings)
@@ -11,7 +13,6 @@ base_model: google-bert/bert-base-uncased
 [![Upstream GitHub](https://img.shields.io/badge/Upstream%20GitHub-google--research%2Fbert-181717?style=flat&logo=github&logoColor=white)](https://github.com/google-research/bert)
 [![arXiv Paper](https://img.shields.io/badge/arXiv-1810.04805-b31b1b.svg)](https://arxiv.org/abs/1810.04805)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Pipeline](https://img.shields.io/badge/Pipeline-bert--masked--lm--pipeline-2ea44f?style=flat&logo=github)](https://github.com/kurtvalcorza/bert-masked-lm-pipeline)
 
 > [!WARNING]
 > ⚠️ **Provided for research, training, and evaluation purposes only.** Model weights are redistributed unmodified under their upstream license, which controls your use, including any commercial use or redistribution; the accompanying code and notebooks are released under this repository's license. All of it is supplied **"as is"**, without warranty of any kind, and has not been validated for production, clinical, or safety-critical use. Running the notebooks downloads third-party weights and datasets governed by their own licenses and consumes compute on your own Colab/Kaggle account. To the maximum extent permitted by law, the maintainers of this repository and the DIMER platform accept no liability for any damages arising from their use. Hosting implies no affiliation with or endorsement by the original authors.
@@ -28,7 +29,7 @@ This pipeline provides a ready-to-run interactive Google Colab notebook that exe
 
 ---
 
-###### Description
+#### Description
 
 `google-bert/bert-base-uncased` is the original BERT-Base uncased checkpoint released by Google Research (Devlin et al., arXiv:1810.04805), redistributed on the Hub by the Hugging Face team and pinned here to revision `86b5e0934494bd15c9632b12f734a8a67f723594`. It is a bidirectional Transformer encoder: 12 layers, hidden size 768, 12 attention heads, intermediate size 3072, absolute position embeddings up to 512 positions and a 30 522-entry WordPiece vocabulary (snapshot `config.json`), about 110 M parameters (upstream README table). It was pre-trained with two self-supervised objectives — masked language modelling (15 % of tokens masked, predict them) and next-sentence prediction — on lower-cased English text. At inference this package runs the encoder once per call and does one of two things: `fill_mask` reads the output-vocabulary logits at the single `[MASK]` position through the `BertForMaskedLM` head and ranks them by softmax; `embed` returns the encoder's last hidden states pooled to one 768-d vector per text. Nothing is fine-tuned, adapted or conditioned in this repository, and the next-sentence-prediction head and pooler weights present in the checkpoint are not loaded (the loader reports them unused). What this repository adds is packaging: the `BERTMaskedLMPipeline` class in `src/bert_masked_lm_pipeline/pipeline.py`, digest verification of the local snapshot (`verify_snapshot`, `stage_missing_files`), input validation against named ceilings, and a fixed output contract.
 
@@ -60,7 +61,7 @@ The training data was captured by no physical sensor: it is text. Upstream discl
 
 ###### Environment
 
-Operating environment: Python 3.12 with `torch==2.14.0`, `transformers==4.57.6`, `tokenizers==0.22.2`, `numpy==2.5.3` (exact pins in `pyproject.toml`), float32. `from_pretrained(device=None)` picks `cuda:0` when available, else CPU; this repository's smoke ran on CPU only (Windows venv, `CUDA_VISIBLE_DEVICES=-1`, `device="cpu"`): loading and digest-verifying the 441 MB snapshot took 4.34 s, one `fill_mask` call 0.13 s, one two-sentence `embed` call 0.02 s. The CUDA path is untested in this repository. Data environment: inputs are assumed to be lower-case-tolerant modern English prose resembling books and encyclopaedia text; the model's behaviour on social-media text, domain jargon (clinical, legal, code), other languages, or text older or newer than the pre-training corpus is not measured here and is expected to degrade — the vocabulary was frozen at pre-training time, so newer terms fragment into pieces.
+Operating environment: Python 3.12 with `torch==2.14.0`, `torchvision==0.29.0`, `torchaudio==2.11.0`, `transformers==4.57.6`, `tokenizers==0.22.2`, `numpy==2.5.3` (exact pins in `pyproject.toml`), float32. `from_pretrained(device=None)` picks `cuda:0` when available, else CPU; this repository's smoke ran on CPU only (Windows venv, `CUDA_VISIBLE_DEVICES=-1`, `device="cpu"`): loading and digest-verifying the 441 MB snapshot took 4.34 s, one `fill_mask` call 0.13 s, one two-sentence `embed` call 0.02 s. The CUDA path is untested in this repository. Data environment: inputs are assumed to be lower-case-tolerant modern English prose resembling books and encyclopaedia text; the model's behaviour on social-media text, domain jargon (clinical, legal, code), other languages, or text older or newer than the pre-training corpus is not measured here and is expected to degrade — the vocabulary was frozen at pre-training time, so newer terms fragment into pieces.
 
 #### Metrics
 
@@ -118,7 +119,7 @@ The pipeline must not be used for surveillance, biometric or demographic profili
 
 ## Runtime
 
-- Pins: `torch==2.14.0`, `transformers==4.57.6`, `tokenizers==0.22.2`, `huggingface-hub==0.36.2`, `safetensors==0.8.0`, `numpy==2.5.3`; Python 3.12.
+- Pins: `torch==2.14.0`, `torchvision==0.29.0`, `torchaudio==2.11.0`, `transformers==4.57.6`, `tokenizers==0.22.2`, `huggingface-hub==0.36.2`, `safetensors==0.8.0`, `numpy==2.5.3`; Python 3.12.
 - Precision: float32 on both CPU and CUDA (`dtype=torch.float32` in the loader).
 - Measured (Windows venv `dimer-next16`, CPU, `CUDA_VISIBLE_DEVICES=-1`, `HF_HUB_OFFLINE=1`, `device="cpu"`): source `local-snapshot`, load + verify 4.34 s, `fill_mask("The capital of France is [MASK].")` 0.13 s → `paris` 0.4168, `lille` 0.0714, `lyon` 0.0634, `marseille` 0.0444, `tours` 0.0303 (9 tokens); `embed` of two sentences with mean pooling 0.02 s → two unit-norm 768-d vectors, cosine 0.8719. The CUDA path was not run.
 - Tests: `pytest -q -o addopts= tests` — 12 passed, offline, no weights required; `ruff check src tests` clean.
