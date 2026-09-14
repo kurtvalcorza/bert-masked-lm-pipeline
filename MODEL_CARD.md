@@ -61,7 +61,7 @@ The training data was captured by no physical sensor: it is text. Upstream discl
 
 ###### Environment
 
-Operating environment: Python 3.12 with `torch==2.14.0`, `transformers==4.57.6`, `tokenizers==0.22.2`, `numpy==2.5.3` (exact pins in `pyproject.toml`), float32. `from_pretrained(device=None)` picks `cuda:0` when available, else CPU; this repository's smoke ran on CPU only (Windows venv, `CUDA_VISIBLE_DEVICES=-1`, `device="cpu"`): loading and digest-verifying the 441 MB snapshot took 4.34 s, one `fill_mask` call 0.13 s, one two-sentence `embed` call 0.02 s. The CUDA path is untested in this repository. Data environment: inputs are assumed to be lower-case-tolerant modern English prose resembling books and encyclopaedia text; the model's behaviour on social-media text, domain jargon (clinical, legal, code), other languages, or text older or newer than the pre-training corpus is not measured here and is expected to degrade — the vocabulary was frozen at pre-training time, so newer terms fragment into pieces.
+Operating environment: Python 3.12 with `torch==2.14.0`, `torchvision==0.29.0`, `torchaudio==2.11.0`, `transformers==4.57.6`, `tokenizers==0.22.2`, `numpy==2.5.3` (exact pins in `pyproject.toml`), float32. `from_pretrained(device=None)` picks `cuda:0` when available, else CPU; this repository's smoke ran on CPU only (Windows venv, `CUDA_VISIBLE_DEVICES=-1`, `device="cpu"`): loading and digest-verifying the 441 MB snapshot took 4.34 s, one `fill_mask` call 0.13 s, one two-sentence `embed` call 0.02 s. The CUDA path is untested in this repository. Data environment: inputs are assumed to be lower-case-tolerant modern English prose resembling books and encyclopaedia text; the model's behaviour on social-media text, domain jargon (clinical, legal, code), other languages, or text older or newer than the pre-training corpus is not measured here and is expected to degrade — the vocabulary was frozen at pre-training time, so newer terms fragment into pieces.
 
 #### Metrics
 
@@ -119,7 +119,7 @@ The pipeline must not be used for surveillance, biometric or demographic profili
 
 ## Runtime
 
-- Pins: `torch==2.14.0`, `transformers==4.57.6`, `tokenizers==0.22.2`, `huggingface-hub==0.36.2`, `safetensors==0.8.0`, `numpy==2.5.3`; Python 3.12.
+- Pins: `torch==2.14.0`, `torchvision==0.29.0`, `torchaudio==2.11.0`, `transformers==4.57.6`, `tokenizers==0.22.2`, `huggingface-hub==0.36.2`, `safetensors==0.8.0`, `numpy==2.5.3`; Python 3.12.
 - Precision: float32 on both CPU and CUDA (`dtype=torch.float32` in the loader).
 - Measured (Windows venv `dimer-next16`, CPU, `CUDA_VISIBLE_DEVICES=-1`, `HF_HUB_OFFLINE=1`, `device="cpu"`): source `local-snapshot`, load + verify 4.34 s, `fill_mask("The capital of France is [MASK].")` 0.13 s → `paris` 0.4168, `lille` 0.0714, `lyon` 0.0634, `marseille` 0.0444, `tours` 0.0303 (9 tokens); `embed` of two sentences with mean pooling 0.02 s → two unit-norm 768-d vectors, cosine 0.8719. The CUDA path was not run.
 - Tests: `pytest -q -o addopts= tests` — 12 passed, offline, no weights required; `ruff check src tests` clean.
