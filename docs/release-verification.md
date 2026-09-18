@@ -95,7 +95,7 @@ Before changing the registry status from `Candidate` to `Release-grade`:
    - Section 4: `fetch_corpus` fetching the three pinned files (3,155,015 / 1,124,865 / 1,204,107 bytes) from
      `raw.githubusercontent.com` into `weights/scitldr/`, 1,992 + 619 + 618 raw papers read, and the seeded draw of
      300 / 50 / 100 records with `check_split_disjoint` reporting no shared text and the three dataset digests
-     `__DIG_TRAIN__` / `__DIG_VAL__` / `__DIG_TEST__`; `outputs/…_train.csv` written; the four dataset refusal probes each
+     `50798982…` / `aea99f0e…` / `4fbbae3c…`; `outputs/…_train.csv` written; the four dataset refusal probes each
      raising `ValueError`;
    - Section 5: the ceilings (`MAX_TEXT_CHARS` 4000, `MAX_TEXT_TOKENS` 512, `MAX_BATCH` 64, `MAX_TOP_K` 100,
      `VOCAB_SIZE` 30522, `HIDDEN_SIZE` 768, `MASK_TOKEN_ID` 103) surfaced; `validate_inputs` writing
@@ -134,7 +134,7 @@ A known-failing default path in the supported runtime blocks release (REL11).
 
 | Notebook | Commit / notebook blob | Date (UTC) | Executor | Outcome |
 |---|---|---|---|---|
-| `bert_masked_lm_colab.ipynb` (`E2E`) | `__LOCAL_ROW__` | 2026-09-19 | Local pre-flight harness (Windows, CPython 3.12.10, CPU, `google.colab` shim, pins pre-installed) | PASS — pre-flight only, **not** promotion evidence |
+| `bert_masked_lm_colab.ipynb` (`E2E`) | `3311a68` / `1a9cb00f` | 2026-09-19 | Local pre-flight harness (Windows, CPython 3.12.10, CPU, `google.colab` shim, pins pre-installed) | PASS — pre-flight only, **not** promotion evidence |
 
 ## Recorded executions
 
@@ -145,7 +145,7 @@ general estimates. No hosted run of the earlier `TASK-INFERENCE` notebook was ev
 
 | Date (UTC) | Commit / notebook blob | Executor | Path exercised | Wall | Outcome |
 |---|---|---|---|---|---|
-| 2026-09-19 | `__LOCAL_ROW__` | Local pre-flight harness (Windows, CPython 3.12.10, CPU float32, `torch 2.14.0+cu130` with `CUDA_VISIBLE_DEVICES=-1`, `transformers 4.57.6`) | `__LOCAL_EXEC__` |
+| 2026-09-19 | `3311a68` / `1a9cb00f` | Local pre-flight harness (Windows, CPython 3.12.10, CPU float32, `torch 2.14.0+cu130` with `CUDA_VISIBLE_DEVICES=-1`, `transformers 4.57.6`) | Default sample path (install skipped, pins pre-installed → three carried modules → inline manifest assert → `stage_missing_files` fetched 0 of 8 entries because the snapshot was pre-staged → `verify_snapshot` 8 files → `from_pretrained` on CPU → `fetch_corpus` served from the pre-staged cache after its digest checks → 1,992 + 619 + 618 papers read, 300 / 50 / 100 drawn with `check_split_disjoint` clean and digests `50798982…` / `aea99f0e…` / `4fbbae3c…` → four dataset refusals → input manifest with the two-mask refusal → `fill_mask` on the unseen cloze (gold `problems`; frozen top-5 `systems situations phenomena events objects`) and `embed` of two test abstracts with all six sanity checks `True` → three unseen clozes filled → unigram floor → frozen evaluation → `adapt` → validation + test evaluation → clozes and embeddings after adaptation → adapter export → reload parity) | 233.1 s | **PASSED** — 11/11 code cells; unigram floor 1,174.6 (top-1 4.2 %, top-5 14.9 %); frozen test masked perplexity 15.09 (3.916 bits, top-1 53.3 %, top-5 70.1 %, 2,983 masked positions, 6.6 s); `fill_mask` 0.08 s, `embed` 0.11 s; `adapt` 28,351,488 of 109,514,298 params, 300 abstracts (63,625 interior tokens), 2 epochs, 206.9 s, validation perplexity 12.89 → 11.15 → 10.87 (`best_epoch` 2, train loss 2.633 → 2.618, top-1 54.5 → 55.7 %); **adapted test 12.59 (3.655 bits, top-1 54.8 %, top-5 72.2 %; Δ −2.50 perplexity, +1.5 / +2.0 points accuracy)**; clozes after adaptation: `problems` entered the top-5 (`applications problems systems phenomena situations`), `foveation` and `normalization` (multi-piece) matched neither before nor after; pair cosine 0.8624 → 0.8835, each vector's cosine to its frozen self 0.9466 / 0.9385; single-input report `not-measurable`; adapter 113,413,392 B / 64 tensors, SHA-256 `f1d2eb9d…`; reload parity exact (ten-record perplexity 14.966474 both ways, 3/3 identical candidate lists, embeddings identical); six exports written. Pre-flight; hosted clean-runtime run still required |
 
 ## Current status
 
