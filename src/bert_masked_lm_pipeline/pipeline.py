@@ -3,14 +3,22 @@
 Weights load only from a digest-verified local snapshot (``weights/<key>/``) or, when explicitly allowed,
 from the Hugging Face Hub at the pinned revision. Two task methods: ``fill_mask`` (one ``[MASK]`` token ->
 ranked vocabulary candidates) and ``embed`` (CLS or mean pooled, L2-normalised 768-d representations).
+
+The adaptation contract (``evaluate``, ``unigram_baseline``, ``adapt``, ``save_artifact``, ``from_artifact``)
+scores a validated ``{id, text}`` corpus by masked-token prediction at seeded positions, continues the
+masked-language-model objective on it for the last encoder layers with validation-perplexity epoch selection,
+and exports the trained tensors as a safetensors adapter bound to the pinned base weights. The two inference
+methods are unchanged by it, but both read the adapted encoder once ``adapt`` or ``load_artifact`` has run.
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
+import math
+import time
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +42,24 @@ HIDDEN_SIZE = 768  # config.json hidden_size
 MASK_TOKEN = "[MASK]"
 POOLINGS = ("cls", "mean")
 DEFAULT_TOP_K = 5
+PAD_TOKEN_ID = 0  # vocab.txt [PAD]
+CLS_TOKEN_ID = 101  # vocab.txt [CLS]
+SEP_TOKEN_ID = 102  # vocab.txt [SEP]
+MASK_TOKEN_ID = 103  # vocab.txt [MASK]
+WEIGHT_FILE = "model.safetensors"
+WEIGHT_SHA256 = (
+    "68d45e234eb4a928074dfd868cead0219ab85354cc53d20e772753c6bb9169d3"  # manifest digest of WEIGHT_FILE
+)
+PARAMETER_COUNT = 109_514_298
+ENCODER_LAYERS = 12  # config.json num_hidden_layers
+DEFAULT_TRAINABLE_LAYERS = 4  # the last four encoder layers (28,351,488 parameters)
+MAX_EVAL_RECORDS = 2_000
+MAX_RECORDS_FIT = 20_000  # the unigram baseline may be fitted on a whole training split
+MIN_SCORED_RECORDS = 50  # below this a scored corpus is labelled a small sample
+ARTIFACT_FORMAT = "org.valcorza.bert-base-uncased.adapter.v1"
+ARTIFACT_FORMAT_VERSION = "1.0"
+ARTIFACT_WEIGHTS_NAME = "adapter.safetensors"
+ARTIFACT_MANIFEST_NAME = "manifest.json"
 
 
 def _sha256(path: Path) -> str:
@@ -271,6 +297,13 @@ class BERTMaskedLMPipeline:
     _decode: Callable[[int], str]
     device: str = "cpu"
     source: str = "injected"
+    _encode: Callable[[str], list[int]] | None = field(default=None, repr=False)
+    _mlm_scorer: Callable[[list[int], list[int], list[int]], list[tuple[float, int]]] | None = field(
+        default=None, repr=False
+    )
+    adapter: dict[str, Any] | None = field(default=None, repr=False)
+    _model: Any = field(default=None, repr=False)
+    _tokenizer: Any = field(default=None, repr=False)
 
     @classmethod
     def from_pretrained(
@@ -295,6 +328,7 @@ class BERTMaskedLMPipeline:
         # Refuse invalid snapshots before importing model libraries.
         import torch
         from transformers import AutoTokenizer, BertForMaskedLM
+
         resolved_device = device or ("cuda:0" if torch.cuda.is_available() else "cpu")
         tokenizer = AutoTokenizer.from_pretrained(
             source, revision=MODEL_REVISION, trust_remote_code=False, **kwargs
@@ -324,7 +358,32 @@ class BERTMaskedLMPipeline:
                 hidden = model.bert(**batch).last_hidden_state
             return hidden.float().cpu().numpy(), batch["attention_mask"].cpu().numpy()
 
-        return cls(mask_runner, embed_runner, tokenizer.convert_ids_to_tokens, resolved_device, origin)
+        def encode(text: str) -> list[int]:
+            return [int(i) for i in tokenizer(text, truncation=False)["input_ids"]]
+
+        def mlm_scorer(ids: list[int], positions: list[int], targets: list[int]) -> list[tuple[float, int]]:
+            """(NLL of the original token, its rank) at every masked position of one already-masked record."""
+            input_ids = torch.tensor([ids], dtype=torch.long, device=resolved_device)
+            with torch.inference_mode():
+                logits = model(input_ids=input_ids, attention_mask=torch.ones_like(input_ids)).logits[0]
+            rows = logits[positions].float()
+            log_probs = torch.log_softmax(rows, dim=-1)
+            target = torch.tensor(targets, dtype=torch.long, device=resolved_device)
+            nll = -log_probs.gather(1, target[:, None])[:, 0]
+            rank = (rows > rows.gather(1, target[:, None])).sum(dim=1) + 1
+            return list(zip(nll.tolist(), rank.tolist(), strict=True))
+
+        return cls(
+            mask_runner,
+            embed_runner,
+            tokenizer.convert_ids_to_tokens,
+            resolved_device,
+            origin,
+            _encode=encode,
+            _mlm_scorer=mlm_scorer,
+            _model=model,
+            _tokenizer=tokenizer,
+        )
 
     def fill_mask(self, text: str, top_k: int = DEFAULT_TOP_K) -> dict[str, Any]:
         """Rank candidates for exactly one ``[MASK]``; ``score`` is a softmax over the 30 522-token vocab."""
@@ -381,3 +440,398 @@ class BERTMaskedLMPipeline:
             "model_id": MODEL_ID,
             "model_revision": MODEL_REVISION,
         }
+
+    # ---- adaptation -----------------------------------------------------------------------------------
+
+    def _require_model(self) -> tuple[Any, Any]:
+        if self._model is None or self._tokenizer is None:
+            raise ValueError(
+                "this operation needs a pipeline built with from_pretrained() or from_artifact()"
+            )
+        return self._model, self._tokenizer
+
+    def _record_ids(self, records: Sequence[Mapping[str, Any]]) -> list[list[int]]:
+        """Tokenise validated records with [CLS]/[SEP]; a record is refused (never truncated) above
+        MAX_TEXT_TOKENS or without at least one interior token."""
+        if self._encode is None:
+            raise ValueError(
+                "this operation needs a pipeline built with from_pretrained() or from_artifact()"
+            )
+        out = []
+        for record in records:
+            ids = list(self._encode(record["text"]))
+            if len(ids) > MAX_TEXT_TOKENS:
+                raise ValueError(f"record {record['id']} has {len(ids)} tokens; ceiling is {MAX_TEXT_TOKENS}")
+            if len(ids) < 3:
+                raise ValueError(f"record {record['id']} has no token between [CLS] and [SEP]")
+            out.append(ids)
+        return out
+
+    @staticmethod
+    def _masked(
+        records: Sequence[Mapping[str, Any]], ids: Sequence[Sequence[int]], *, rate: float, seed: int
+    ) -> list[tuple[list[int], list[int], list[int]]]:
+        """(masked ids, positions, original tokens) per record under the seeded per-record masking."""
+        from .metrics import mask_positions, record_seed
+
+        out = []
+        for record, record_ids in zip(records, ids, strict=True):
+            positions = mask_positions(len(record_ids), rate=rate, seed=record_seed(record["id"], seed))
+            masked = list(record_ids)
+            for position in positions:
+                masked[position] = MASK_TOKEN_ID
+            out.append((masked, positions, [record_ids[p] for p in positions]))
+        return out
+
+    def evaluate(
+        self, records: Sequence[Mapping[str, Any]], *, mask_rate: float = 0.15, seed: int = 0
+    ) -> dict[str, Any]:
+        """Masked-token prediction on a validated corpus: a seeded `mask_rate` of each record's interior
+        tokens is replaced by [MASK] and the original tokens are scored by NLL and rank."""
+        from .metrics import masked_metrics
+        from .samples import validate_dataset
+
+        if self._mlm_scorer is None:
+            raise ValueError(
+                "this operation needs a pipeline built with from_pretrained() or from_artifact()"
+            )
+        checked = validate_dataset(records, min_records=1, max_records=MAX_EVAL_RECORDS)["records"]
+        started = time.perf_counter()
+        scores = [
+            self._mlm_scorer(masked, positions, targets)
+            for masked, positions, targets in self._masked(
+                checked, self._record_ids(checked), rate=mask_rate, seed=seed
+            )
+        ]
+        metrics = masked_metrics(scores)
+        metrics.update(
+            {
+                "mask_rate": mask_rate,
+                "seed": seed,
+                "verdict": "measured" if len(checked) >= MIN_SCORED_RECORDS else "measured-small-sample",
+                "adapted": self.adapter is not None,
+                "seconds": round(time.perf_counter() - started, 3),
+                "model_id": MODEL_ID,
+                "model_revision": MODEL_REVISION,
+            }
+        )
+        return metrics
+
+    def unigram_baseline(
+        self,
+        train: Sequence[Mapping[str, Any]],
+        test: Sequence[Mapping[str, Any]],
+        *,
+        mask_rate: float = 0.15,
+        seed: int = 0,
+    ) -> dict[str, Any]:
+        """The add-one unigram model fitted on `train` (interior tokens), scored at the same masked positions
+        of `test` that `evaluate` uses under the same seed."""
+        from .metrics import unigram_baseline
+        from .samples import validate_dataset
+
+        train_checked = validate_dataset(train, min_records=1, max_records=MAX_RECORDS_FIT)["records"]
+        test_checked = validate_dataset(test, min_records=1, max_records=MAX_EVAL_RECORDS)["records"]
+        train_ids = [ids[1:-1] for ids in self._record_ids(train_checked)]
+        targets = [
+            record_targets
+            for _masked, _positions, record_targets in self._masked(
+                test_checked, self._record_ids(test_checked), rate=mask_rate, seed=seed
+            )
+        ]
+        result = unigram_baseline(train_ids, targets, VOCAB_SIZE)
+        result.update({"mask_rate": mask_rate, "seed": seed})
+        return result
+
+    def _trainable_names(self, trainable_layers: int) -> list[str]:
+        if not isinstance(trainable_layers, int) or not 1 <= trainable_layers <= ENCODER_LAYERS:
+            raise ValueError(f"trainable_layers must be an int in 1..{ENCODER_LAYERS}")
+        model, _ = self._require_model()
+        first = ENCODER_LAYERS - trainable_layers
+        prefixes = tuple(f"bert.encoder.layer.{k}." for k in range(first, ENCODER_LAYERS))
+        return [name for name, _p in model.named_parameters() if name.startswith(prefixes)]
+
+    def adapt(
+        self,
+        train: Sequence[Mapping[str, Any]],
+        val: Sequence[Mapping[str, Any]] | None = None,
+        *,
+        epochs: int = 2,
+        lr: float = 5e-5,
+        batch_size: int = 8,
+        trainable_layers: int = DEFAULT_TRAINABLE_LAYERS,
+        mask_rate: float = 0.15,
+        seed: int = 0,
+        progress: Callable[[dict[str, Any]], None] | None = None,
+    ) -> dict[str, Any]:
+        """Bounded continued masked-language-model training on a validated text corpus.
+
+        Only the last `trainable_layers` encoder layers train (4 by default; the word, position and
+        token-type embeddings, the earlier layers, the pooler and the MLM head with its tied decoder stay
+        frozen). Every epoch re-draws a seeded `mask_rate` of each record's interior tokens, replaces them
+        with [MASK] and applies cross-entropy at those positions only; AdamW at a fixed learning rate,
+        gradient clipping at 1.0, no scheduler; records over MAX_TEXT_TOKENS are refused, never truncated.
+        Epoch 0 records the frozen model's validation metrics under the evaluation masking (`seed`); the
+        epoch with the lowest validation masked perplexity is kept."""
+        from .samples import validate_dataset
+
+        if not isinstance(epochs, int) or not 1 <= epochs <= 20:
+            raise ValueError("epochs must be an int in 1..20")
+        if not (0.0 < lr <= 1e-3):
+            raise ValueError("lr must be in (0, 1e-3]")
+        if not isinstance(batch_size, int) or not 1 <= batch_size <= 32:
+            raise ValueError("batch_size must be an int in 1..32")
+        if not (0.0 < mask_rate <= 0.5):
+            raise ValueError("mask_rate must be in (0, 0.5]")
+        names = self._trainable_names(trainable_layers)
+        train_checked = validate_dataset(train)["records"]
+        val_checked = (
+            validate_dataset(val, min_records=1, max_records=MAX_EVAL_RECORDS)["records"] if val else []
+        )
+        train_ids = self._record_ids(train_checked)
+        import torch
+
+        torch.manual_seed(seed)
+        model, _ = self._require_model()
+        started = time.perf_counter()
+        wanted = set(names)
+        for name, param in model.named_parameters():
+            param.requires_grad_(name in wanted)
+        params = [p for p in model.parameters() if p.requires_grad]
+        n_trainable = sum(p.numel() for p in params)
+        optimiser = torch.optim.AdamW(params, lr=lr, weight_decay=0.01)
+        device = torch.device(self.device)
+
+        def score_val() -> dict[str, Any] | None:
+            if not val_checked:
+                return None
+            model.eval()
+            keep = ("perplexity", "bits_per_token", "top1_accuracy", "top5_accuracy", "n_masked")
+            return {
+                k: v
+                for k, v in self.evaluate(val_checked, mask_rate=mask_rate, seed=seed).items()
+                if k in keep
+            }
+
+        history: list[dict[str, Any]] = []
+        entry: dict[str, Any] = {"epoch": 0, "train_loss": None, "val": score_val(), "note": "frozen model"}
+        history.append(entry)
+        if progress:
+            progress(entry)
+        best_ppl = entry["val"]["perplexity"] if entry["val"] else math.inf
+        best_state = {k: v.detach().clone() for k, v in model.state_dict().items() if k in wanted}
+        initial_state = {k: v.clone() for k, v in best_state.items()}
+        best_epoch = 0
+        generator = torch.Generator().manual_seed(seed)
+        try:
+            for epoch in range(1, epochs + 1):
+                model.train()
+                masked = self._masked(train_checked, train_ids, rate=mask_rate, seed=seed + 1_000_003 * epoch)
+                order = torch.randperm(len(masked), generator=generator).tolist()
+                losses = []
+                for start in range(0, len(order), batch_size):
+                    batch = [masked[i] for i in order[start : start + batch_size]]
+                    width = max(len(ids) for ids, _p, _t in batch)
+                    input_ids = torch.full((len(batch), width), PAD_TOKEN_ID, dtype=torch.long)
+                    attention = torch.zeros((len(batch), width), dtype=torch.long)
+                    labels = torch.full((len(batch), width), -100, dtype=torch.long)
+                    for row, (ids, positions, targets) in enumerate(batch):
+                        input_ids[row, : len(ids)] = torch.tensor(ids)
+                        attention[row, : len(ids)] = 1
+                        labels[row, positions] = torch.tensor(targets)
+                    out = model(
+                        input_ids=input_ids.to(device),
+                        attention_mask=attention.to(device),
+                        labels=labels.to(device),
+                    )
+                    optimiser.zero_grad(set_to_none=True)
+                    out.loss.backward()
+                    torch.nn.utils.clip_grad_norm_(params, 1.0)
+                    optimiser.step()
+                    losses.append(float(out.loss.detach()))
+                model.eval()
+                entry = {"epoch": epoch, "train_loss": sum(losses) / len(losses), "val": score_val()}
+                history.append(entry)
+                if progress:
+                    progress(entry)
+                current = entry["val"]["perplexity"] if entry["val"] else -math.inf
+                if current < best_ppl or not entry["val"]:
+                    best_ppl = current
+                    best_state = {k: v.detach().clone() for k, v in model.state_dict().items() if k in wanted}
+                    best_epoch = epoch
+        except BaseException:
+            # Transactional: a failure in training, validation or the progress callback leaves the base
+            # exactly as it was, with every parameter frozen again.
+            restore = dict(model.state_dict())
+            restore.update(initial_state)
+            model.load_state_dict(restore, strict=True)
+            model.eval()
+            for param in model.parameters():
+                param.requires_grad_(False)
+            self.adapter = None
+            raise
+        merged = dict(model.state_dict())
+        merged.update(best_state)
+        model.load_state_dict(merged, strict=True)
+        model.eval()
+        for param in model.parameters():
+            param.requires_grad_(False)
+        self.adapter = {
+            "objective": "masked language modelling (continued pre-training)",
+            "trainable_layers": trainable_layers,
+            "trainable_names": names,
+            "n_trainable": n_trainable,
+            "n_total": sum(p.numel() for p in model.parameters()),
+            "epochs": epochs,
+            "best_epoch": best_epoch,
+            "selection": "lowest validation masked perplexity"
+            if val_checked
+            else "final epoch (no validation split)",
+            "lr": lr,
+            "batch_size": batch_size,
+            "mask_rate": mask_rate,
+            "n_train": len(train_checked),
+            "n_train_tokens": sum(len(ids) - 2 for ids in train_ids),
+            "n_val": len(val_checked),
+            "seed": seed,
+            "history": history,
+            "seconds": round(time.perf_counter() - started, 2),
+        }
+        return dict(self.adapter)
+
+    # ---- artifacts ------------------------------------------------------------------------------------
+
+    def save_artifact(self, output_dir: str | Path, metadata: Mapping[str, Any] | None = None) -> Path:
+        """Write the adapted encoder-layer tensors as safetensors with a manifest naming the base."""
+        if self.adapter is None:
+            raise ValueError("nothing to save: call adapt() first")
+        model, _ = self._require_model()
+        from safetensors.torch import save_file
+
+        out = Path(output_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        names = set(self.adapter["trainable_names"])
+        tensors = {k: v.detach().cpu().contiguous() for k, v in model.state_dict().items() if k in names}
+        weights_path = out / ARTIFACT_WEIGHTS_NAME
+        save_file(tensors, str(weights_path), metadata={"format": "pt"})
+        manifest = {
+            "format": ARTIFACT_FORMAT,
+            "format_version": ARTIFACT_FORMAT_VERSION,
+            "base_model": {
+                "id": MODEL_ID,
+                "revision": MODEL_REVISION,
+                "key": MODEL_KEY,
+                "weight_file": WEIGHT_FILE,
+                "weight_sha256": WEIGHT_SHA256,
+            },
+            "adapter": {k: v for k, v in self.adapter.items() if k not in ("history", "trainable_names")},
+            "history": self.adapter["history"],
+            "tensors": sorted(tensors),
+            "files": [
+                {
+                    "path": ARTIFACT_WEIGHTS_NAME,
+                    "bytes": weights_path.stat().st_size,
+                    "sha256": _sha256(weights_path),
+                }
+            ],
+            "metadata": dict(metadata or {}),
+        }
+        (out / ARTIFACT_MANIFEST_NAME).write_text(
+            json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+        return out
+
+    def _check_artifact_manifest(self, root: Path, manifest: Mapping[str, Any]) -> Path:
+        """Refuse an artifact whose manifest is not exactly the one this pipeline writes: the supported
+        format and version, the pinned base (id, revision, weight file, digest), exactly one file entry
+        named `adapter.safetensors` that resolves inside the artifact directory, and a recorded
+        `trainable_layers` in range. Nothing is deserialised here. The digest check that follows
+        detects corruption or drift of the weights relative to the adjacent manifest; it is not
+        authenticity against an actor who can replace both files."""
+        if manifest.get("format") != ARTIFACT_FORMAT:
+            raise ValueError(f"artifact format {manifest.get('format')!r} != {ARTIFACT_FORMAT!r}")
+        if manifest.get("format_version") != ARTIFACT_FORMAT_VERSION:
+            raise ValueError(
+                f"artifact format_version {manifest.get('format_version')!r} is not the supported "
+                f"{ARTIFACT_FORMAT_VERSION!r}"
+            )
+        base = manifest.get("base_model", {})
+        if (base.get("id"), base.get("revision"), base.get("weight_sha256")) != (
+            MODEL_ID,
+            MODEL_REVISION,
+            WEIGHT_SHA256,
+        ):
+            raise ValueError("artifact was adapted from a different base model, revision or weight file")
+        if base.get("weight_file", WEIGHT_FILE) != WEIGHT_FILE:
+            raise ValueError("artifact was adapted from a different base weight file")
+        files = manifest.get("files")
+        if not isinstance(files, list) or len(files) != 1:
+            raise ValueError("artifact manifest must list exactly one file")
+        entry = files[0]
+        if not isinstance(entry, Mapping) or entry.get("path") != ARTIFACT_WEIGHTS_NAME:
+            raise ValueError(f"artifact manifest must name exactly {ARTIFACT_WEIGHTS_NAME!r}")
+        weights_path = (root / entry["path"]).resolve()
+        if weights_path.parent != root.resolve():
+            raise ValueError("artifact weight path must resolve inside the artifact directory")
+        adapter = manifest.get("adapter")
+        layers = adapter.get("trainable_layers") if isinstance(adapter, Mapping) else None
+        if isinstance(layers, bool) or not isinstance(layers, int):
+            raise ValueError("artifact manifest does not record an integer trainable_layers")
+        if not isinstance(manifest.get("tensors"), list):
+            raise ValueError("artifact manifest must list its tensors")
+        return weights_path
+
+    def load_artifact(self, artifact_dir: str | Path) -> dict[str, Any]:
+        """Verify an adapter's manifest, digest and exact tensor set **before** deserialising, then overwrite
+        exactly the tensors it carries."""
+        root = Path(artifact_dir)
+        manifest = json.loads((root / ARTIFACT_MANIFEST_NAME).read_text(encoding="utf-8"))
+        weights_path = self._check_artifact_manifest(root, manifest)
+        entry = manifest["files"][0]
+        if not weights_path.is_file():
+            raise FileNotFoundError(f"artifact weights missing: {weights_path}")
+        if _sha256(weights_path) != entry["sha256"] or weights_path.stat().st_size != entry["bytes"]:
+            raise ValueError(f"{entry['path']}: digest or size mismatch; refusing to load")
+        # The exact tensor set the recorded configuration implies — no subset, no extra, no other layer.
+        expected = sorted(self._trainable_names(manifest["adapter"]["trainable_layers"]))
+        if sorted(manifest["tensors"]) != expected:
+            raise ValueError("artifact tensor list does not match its recorded configuration")
+        model, _ = self._require_model()
+        from safetensors.torch import load_file
+
+        tensors = load_file(str(weights_path))
+        if sorted(tensors) != expected:
+            raise ValueError("artifact tensor names differ from its manifest")
+        state = model.state_dict()
+        for key, value in tensors.items():
+            if key not in state or not key.startswith("bert.encoder.layer."):
+                raise ValueError(
+                    f"artifact tensor {key} is not an adaptable encoder-layer tensor of the base"
+                )
+            if tuple(value.shape) != tuple(state[key].shape):
+                raise ValueError(
+                    f"artifact tensor {key}: shape {tuple(value.shape)} != {tuple(state[key].shape)}"
+                )
+        merged = dict(state)
+        merged.update({k: v.to(state[k].dtype) for k, v in tensors.items()})
+        model.load_state_dict(merged, strict=True)
+        model.eval()
+        self.adapter = {
+            **manifest["adapter"],
+            "trainable_names": manifest["tensors"],
+            "history": manifest.get("history", []),
+        }
+        return manifest
+
+    @classmethod
+    def from_artifact(
+        cls,
+        artifact_dir: str | Path,
+        *,
+        device: str | None = None,
+        weights_dir: str | Path | None = None,
+        allow_download: bool = False,
+    ) -> BERTMaskedLMPipeline:
+        pipeline = cls.from_pretrained(device=device, weights_dir=weights_dir, allow_download=allow_download)
+        pipeline.load_artifact(artifact_dir)
+        return pipeline
