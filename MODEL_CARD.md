@@ -42,7 +42,7 @@ Two tasks over short English text. Fill-mask: input one string containing exactl
 
 ###### Primary Intended Users
 
-Machine-learning engineers, NLP researchers and application developers integrating a well-understood English encoder into research prototypes, internal enterprise tooling or the DIMER model workbench. The pipeline assumes its users understand that the model is uncased English only (accents are stripped and case is lost by the tokenizer, `do_lower_case: true`), that a fill-mask softmax score is a ranking signal and not a calibrated probability, that raw BERT embeddings — unlike models trained with a contrastive sentence objective — give only moderate semantic similarity and must be evaluated on the operator's own retrieval or clustering task before use, and that the documented gender and occupation bias in the upstream card's own examples will surface in both outputs. It is not designed for hobbyist "point and trust" use.
+Machine-learning engineers, NLP researchers and application developers integrating a well-understood English encoder into research prototypes or in-house tooling. The pipeline assumes its users understand that the model is uncased English only (accents are stripped and case is lost by the tokenizer, `do_lower_case: true`), that a fill-mask softmax score is a ranking signal and not a calibrated probability, that raw BERT embeddings — unlike models trained with a contrastive sentence objective — give only moderate semantic similarity and must be evaluated on the operator's own retrieval or clustering task before use, and that the documented gender and occupation bias in the upstream card's own examples will surface in both outputs. It is not designed for hobbyist "point and trust" use.
 
 ###### Out-of-scope use cases
 
