@@ -441,6 +441,16 @@ class BERTMaskedLMPipeline:
             "model_revision": MODEL_REVISION,
         }
 
+    def count_tokens(self, text: str) -> int:
+        """WordPiece tokens of ``text`` including [CLS]/[SEP], exactly as ``evaluate`` and ``adapt`` encode it
+        (no truncation), without running the model, so a corpus can be checked against MAX_TEXT_TOKENS
+        before any model call."""
+        if self._encode is None:
+            raise ValueError(
+                "this operation needs a pipeline built with from_pretrained() or from_artifact()"
+            )
+        return len(self._encode(_check_text(text, "text")))
+
     # ---- adaptation -----------------------------------------------------------------------------------
 
     def _require_model(self) -> tuple[Any, Any]:
@@ -583,6 +593,14 @@ class BERTMaskedLMPipeline:
             raise ValueError("batch_size must be an int in 1..32")
         if not (0.0 < mask_rate <= 0.5):
             raise ValueError("mask_rate must be in (0, 0.5]")
+        if self.adapter is not None:
+            # adapt() trains from the weights in memory and records epoch 0 as the frozen model; on an adapted
+            # (or artifact-loaded) pipeline that would stack a second adaptation under a "frozen model" label
+            # and export only the latest layers (review MLM-M2).
+            raise ValueError(
+                "this pipeline is already adapted; adapt() starts from the pretrained base, so build a fresh "
+                "pipeline with from_pretrained() first"
+            )
         names = self._trainable_names(trainable_layers)
         train_checked = validate_dataset(train)["records"]
         val_checked = (

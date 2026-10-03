@@ -46,6 +46,10 @@ SAMPLE_SEED = 42
 SAMPLE_SPLIT = {"train": 300, "validation": 50, "test": 100}
 MIN_RECORDS = 8
 MAX_RECORDS = 20_000
+# BYOD: the notebook embeds two test documents as a pair and selects epochs on validation, so a split corpus
+# needs at least this many test and validation records besides MIN_RECORDS training records.
+MIN_TEST_RECORDS = 2
+MIN_VAL_RECORDS = 1
 _ID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
 
 
@@ -233,10 +237,14 @@ def split_dataset(
     test_fraction: float = 0.2,
     seed: int = 0,
 ) -> dict[str, list[dict[str, Any]]]:
-    """Seeded shuffle of a BYOD corpus into train/validation/test after de-duplicating texts."""
+    """Seeded shuffle of a BYOD corpus into train/validation/test after de-duplicating texts.
+
+    The split must leave at least MIN_RECORDS training, MIN_VAL_RECORDS validation and MIN_TEST_RECORDS test
+    records; a refusal names the split, the distinct-text count and the real minimum
+    (`byod_minimum_records`)."""
     if not (0.0 <= val_fraction < 1.0 and 0.0 < test_fraction < 1.0 and val_fraction + test_fraction < 1.0):
         raise ValueError("fractions must satisfy 0 <= val < 1, 0 < test < 1, val + test < 1")
-    checked = validate_dataset(records)["records"]
+    checked = validate_dataset(records, min_records=1)["records"]
     seen: set[str] = set()
     unique = []
     for record in checked:
@@ -252,11 +260,66 @@ def split_dataset(
         "validation": unique[n_test : n_test + n_val],
         "train": unique[n_test + n_val :],
     }
-    if len(splits["train"]) < MIN_RECORDS:
+    needed = {"train": MIN_RECORDS, "validation": MIN_VAL_RECORDS, "test": MIN_TEST_RECORDS}
+    short = {name: len(splits[name]) for name, least in needed.items() if len(splits[name]) < least}
+    if short:
+        name, have = next(iter(short.items()))
+        try:
+            minimum = byod_minimum_records(val_fraction, test_fraction)
+            least = f"a corpus needs at least {minimum} distinct texts"
+        except ValueError:
+            least = "no corpus size gives every split its minimum at these fractions"
         raise ValueError(
-            f"split leaves {len(splits['train'])} training records; at least {MIN_RECORDS} are required"
+            f"the {name} split has {have} records (at least {needed[name]} are required): {len(unique)} "
+            f"distinct texts after de-duplication split into train/validation/test as "
+            f"{len(splits['train'])}/{len(splits['validation'])}/{len(splits['test'])}; {least}. "
+            "Add documents"
         )
     return splits
+
+
+def byod_minimum_records(val_fraction: float = 0.15, test_fraction: float = 0.2) -> int:
+    """Smallest number of distinct texts that `split_dataset` accepts at these fractions."""
+    for n in range(1, MAX_RECORDS + 1):
+        n_test = max(1, round(n * test_fraction))
+        n_val = round(n * val_fraction)
+        if n_test >= MIN_TEST_RECORDS and n_val >= MIN_VAL_RECORDS and n - n_test - n_val >= MIN_RECORDS:
+            return n
+    raise ValueError("no corpus within MAX_RECORDS satisfies the split")
+
+
+def check_byod_tokens(
+    splits: Mapping[str, Sequence[Mapping[str, Any]]], count_tokens: Any, *, max_tokens: int
+) -> dict[str, Any]:
+    """WordPiece budget of a split corpus, checked before any model call.
+
+    `count_tokens(text)` returns the token count including [CLS]/[SEP]. A record over `max_tokens`, or with
+    no token between [CLS] and [SEP], is refused naming its split and id: scoring and training reject such a
+    record rather than truncate it."""
+    over: list[str] = []
+    empty: list[str] = []
+    longest = 0
+    for name, part in splits.items():
+        for record in part:
+            n = int(count_tokens(record["text"]))
+            longest = max(longest, n)
+            if n > max_tokens:
+                over.append(f"{name}:{record['id']} ({n} tokens)")
+            elif n < 3:
+                empty.append(f"{name}:{record['id']}")
+    if over:
+        raise ValueError(
+            f"{len(over)} record(s) exceed the {max_tokens}-token ceiling, which scoring and training reject "
+            f"rather than truncate: {over[:10]}; split each long document into shorter ones (for example by "
+            f"paragraph) or remove it"
+        )
+    if empty:
+        raise ValueError(f"record(s) with no token between [CLS] and [SEP]: {empty[:10]}; remove them")
+    return {
+        "longest_tokens": longest,
+        "ceiling": max_tokens,
+        "records_checked": sum(len(part) for part in splits.values()),
+    }
 
 
 def load_byod_dataset(path: str | Path) -> list[dict[str, Any]]:

@@ -1,6 +1,6 @@
 """Static release-asset validation for the BERT-Base uncased masked-LM DIMER pipeline.
 
-Checks the STANDALONE tutorial notebook (DIMER Notebook Specification 2.0 §4), the tutorial
+Checks the STANDALONE tutorial notebook (DIMER Notebook Specification 2.2 §4), the tutorial
 registry, model card, README, STATUS.md and weight documentation for source conformance and
 cross-document identity consistency, and runs the generator parity checks (PAR1–PAR3).
 
@@ -43,7 +43,14 @@ CODE_MARKERS = (
     "corpus = read_corpus(fetch_corpus(cache_dir='weights/scitldr'))",
     "splits = build_sample_dataset(corpus, seed=SPLIT_SEED)",
     "records = load_byod_dataset(byod_path)",
-    "dataset_manifests = {name: validate_dataset(part) for name, part in splits.items()}",
+    "dataset_manifests = {name: validate_dataset(part, min_records=MIN_RECORDS if name == 'train' else 1) for name, part in splits.items()}",
+    # MLM-M3 / MLM-m3: BYOD path field, upload guards, token ceiling and cloze checks before any model call
+    "BYOD_PATH = ''",
+    "if len(uploaded) != 1:",
+    "dropped_duplicates = len(records) - sum(len(part) for part in splits.values())",
+    "token_budget = check_byod_tokens(splits, pipe.count_tokens, max_tokens=MAX_TEXT_TOKENS)",
+    "if made is None:",
+    "cloze_source = 'BYOD test records (scored in Sections 6 and 8; not unseen documents)'",
     "disjoint = check_split_disjoint(splits)",
     "write_dataset_csv(train_records, 'outputs/bert_masked_lm_train.csv')",
     # Stage 5: both inference contracts with the manifest, rejection probe and sanity checks
@@ -58,7 +65,11 @@ CODE_MARKERS = (
     # Stage 6: the unigram floor and the frozen masked metrics
     "unigram = pipe.unigram_baseline(train_records, test_records, mask_rate=MASK_RATE, seed=SEED)",
     "frozen_test = pipe.evaluate(test_records, mask_rate=MASK_RATE, seed=SEED)",
-    "assert frozen_test['n_masked'] == unigram['n_masked'] and frozen_test['perplexity'] < unigram['perplexity']",
+    # MLM-M2: Sections 5-7 start from the pretrained model; Section 6 refuses an adapted model
+    "def reset_to_pretrained():",
+    "    pipe = BERTMaskedLMPipeline.from_pretrained(weights_dir=WEIGHTS_DIR)",
+    "if frozen_test['adapted']:",
+    "if frozen_test['n_masked'] != unigram['n_masked']:",
     # Stage 7: bounded continued pre-training with explicit hyperparameters
     "adapt_result = pipe.adapt(",
     "trainable_layers=TRAINABLE_LAYERS",
@@ -68,13 +79,15 @@ CODE_MARKERS = (
     "adapted_test = pipe.evaluate(test_records, mask_rate=MASK_RATE, seed=SEED)",
     "adapted_val = pipe.evaluate(val_records, mask_rate=MASK_RATE, seed=SEED)",
     "'delta_vs_frozen'",
-    "assert adapted_test['perplexity'] < frozen_test['perplexity']",
+    # MLM-m1: a printed verdict instead of a result-dependent assert; the run history for experiments
+    "improved = adapted_test['perplexity'] < frozen_test['perplexity']",
+    "run_history = globals().get('run_history', [])",
     # Stage 9: clozes and embeddings before/after, single-input report, artifact, reload parity, provenance
     "single_report = evaluation_report(",
     "vectors_after = np.asarray(pipe.embed(pair_texts, pooling=POOLING)['embeddings'], dtype=np.float32)",
     "pipe.save_artifact(artifact_dir, metadata=",
     "reloaded = BERTMaskedLMPipeline.from_artifact(artifact_dir, weights_dir=WEIGHTS_DIR, device=pipe.device)",
-    "assert abs(ppl_pair[0] - ppl_pair[1]) < 1e-6 and parity['identical_candidates'] == parity['of'] and parity['embeddings_identical']",
+    "raise RuntimeError(f'Reload parity failed: {parity}.",
     "weight_entry = next(entry for entry in snapshot['files'] if entry['path'] == WEIGHT_FILE)",
     "'weight_format': 'safetensors, digest-verified'",
     "'corpus': {'name': CORPUS_NAME, 'release': CORPUS_RELEASE, 'base_url': CORPUS_BASE_URL",
@@ -97,6 +110,34 @@ MARKDOWN_MARKERS = (
     "**every embedding changes**",
     "classification or other supervised heads, next-sentence prediction, multi-mask filling",
     "Apache-2.0 (Cachola et al., 2020)",
+)
+# Learner-facing text the review fixes removed; it must not come back (MLM-M1 restart/install text, MLM-M3 the wrong
+# BYOD minimum, MLM-m2 timings without an environment, MLM-m1 a result-dependent assertion).
+STALE_MARKDOWN = (
+    "a dataset needs 8..20,000 records",
+    "installs the pinned dependencies",
+    "about four minutes of model time",
+    "the build record measured",
+    "about seven seconds on CPU",
+    "the cell asserts the adapted perplexity is lower",
+    "re-run from that cell",
+    "Restart the runtime, then rerun",
+)
+# The guided layer (NOTEBOOK_SPEC 2.2 §3.5, GDL1-GDL15; review MLM-M4): each marker with its minimum count.
+GUIDED_MARKERS = (
+    ("**Who this is for.**", 1),
+    ("**Input → Model → Output.**", 1),
+    ("**How to use this notebook.**", 1),
+    ("**Roadmap:**", 1),
+    ("**Predict before running:**", 6),
+    ("**What to notice:**", 6),
+    ("<summary>Check your reasoning</summary>", 6),
+    ("## 10. Your turn — change one thing", 1),
+    ("**Predict →", 0),
+    ("## Troubleshooting", 1),
+    ("## Glossary", 1),
+    ("## Conclusion (your notes)", 1),
+    ("> **Infrastructure.**", 3),
 )
 # Direct-library use that must stay inside the carried module cell (G2: the notebook calls the
 # pipeline API, it does not reimplement it). Checked on every code cell except the embedded one.
@@ -122,10 +163,10 @@ FORBIDDEN_OUTSIDE_MODULE = (
 # ---------------------------------------------------------------------------
 # Shared checks. Everything below is source/structure validation only. Passing
 # these checks is NOT clean-runtime execution evidence under DIMER Notebook
-# Specification 2.0; see docs/release-verification.md for the release gate.
+# Specification 2.2; see docs/release-verification.md for the release gate.
 # ---------------------------------------------------------------------------
 
-NOTEBOOK_SPEC = "2.0"
+NOTEBOOK_SPEC = "2.2"
 ALLOWED_PROFILES = {"E2E", "ARTIFACT-INFERENCE", "TASK-INFERENCE", "MULTI-CAPABILITY", "SMOKE"}
 STATUS_TOKENS = ("Candidate", "Release-grade")
 PLACEHOLDER = re.compile(r"\b(TODO|TBD|FIXME)\b|Insert text here|Tooltip:", re.I)
@@ -619,8 +660,25 @@ def _validate_notebook_content(
     _check(not missing, f"{path.name}: missing required source markers: {missing}")
     present = [label for label, pattern in FORBIDDEN_PATTERNS if pattern.search(code)]
     _check(not present, f"{path.name}: forbidden/insecure source: {present}")
-    leaked = [marker for marker in FORBIDDEN_OUTSIDE_MODULE if marker in outside]
+    # The kernel install cell downloads the pinned uv wheel and verifies its size and SHA-256 (MLM-M1); it is the only
+    # cell outside the carried modules allowed to use urllib.request.
+    kernel = {index for index, source, _tree in code_cells if "# dimer: kernel cell" in source}
+    learner = "\n".join(text for index, text in stripped.items() if index not in embedded and index not in kernel)
+    kernel_raw = [source for index, source, _tree in code_cells if index in kernel]
+    leaked = [marker for marker in FORBIDDEN_OUTSIDE_MODULE if marker in learner]
+    leaked += [m for m in FORBIDDEN_OUTSIDE_MODULE if m != "urllib.request" and any(m in _strip_comments(k) for k in kernel_raw)]
     _check(not leaked, f"{path.name}: direct library use outside the carried module cell (G2): {leaked}")
+    _check(len(kernel) == 2, f"{path.name}: exactly two kernel cells (isolated install and router) are expected (MLM-M1)")
+    install = next((k for k in kernel_raw if "LOCK_TEXT = r" in k), "")
+    for needed in ("'--managed-python'", "'--require-hashes'", "'--only-binary'", "':all:'", "UV_SHA256", "LOCK_SHA256", "platform.machine() != 'x86_64'"):
+        _check(needed.replace("'", '"') in install, f"{path.name}: the isolated install cell must use {needed} (MLM-M1)")
+    _check("_ip.input_transformers_cleanup.append(_route_to_isolated_runtime)" in "\n".join(kernel_raw), f"{path.name}: later cells must be routed to the isolated environment (MLM-M1)")
+    stale = [marker for marker in STALE_MARKDOWN if marker in markdown]
+    _check(not stale, f"{path.name}: stale learner-facing text: {stale}")
+    _check("{{" not in markdown and "}}" not in markdown, f"{path.name}: markdown must not show doubled braces (MLM-m5)")
+    _check("\nassert " not in "\n" + learner, f"{path.name}: learner cells must not use a bare assert (MLM-M2, MLM-m1)")
+    short = [(marker, markdown.count(marker), least) for marker, least in GUIDED_MARKERS if markdown.count(marker) < max(least, 1)]
+    _check(not short, f"{path.name}: guided layer incomplete (marker, found, needed): {short}")
     _check(
         f"pipe = {MODEL_LOAD_EXPR}" in outside,
         f"{path.name}: must load through {MODEL_LOAD_EXPR} (INF1)",
