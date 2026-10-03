@@ -33,8 +33,9 @@ ABSTRACTS = [
 RECORDS = [{"id": f"p{i:02d}", "text": t} for i, t in enumerate(ABSTRACTS)]
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture
 def pipe():
+    # A fresh pretrained pipeline per test: adapt() refuses an already-adapted pipeline (review MLM-M2).
     return BERTMaskedLMPipeline.from_pretrained(device="cpu")
 
 
@@ -137,3 +138,14 @@ def test_adapt_is_transactional_when_the_progress_callback_raises(pipe):
     after = pipe._model.state_dict()
     assert all(torch.equal(before[k], after[k]) for k in before) and pipe.adapter is None
     assert not any(p.requires_grad for p in pipe._model.parameters())
+
+
+def test_adapt_refuses_an_adapted_pipeline_and_a_fresh_load_starts_from_the_base(pipe):
+    """MLM-M2: a second adapt() on one object would train on top of the first and call epoch 0 "frozen"."""
+    frozen = pipe.evaluate(RECORDS[8:], seed=1)["perplexity"]
+    pipe.adapt(RECORDS[:8], None, epochs=1, trainable_layers=2, batch_size=4)
+    with pytest.raises(ValueError, match="already adapted"):
+        pipe.adapt(RECORDS[:8], None, epochs=1, trainable_layers=1, batch_size=4)
+    fresh = BERTMaskedLMPipeline.from_pretrained(device="cpu")
+    again = fresh.evaluate(RECORDS[8:], seed=1)
+    assert fresh.adapter is None and again["adapted"] is False and again["perplexity"] == frozen

@@ -1,0 +1,67 @@
+[colab] Parsing notebook '/home/kurt/colab-runs/bert-masked-lm-pipeline-7b73463-b86093/bert_masked_lm_colab_7b73463_colab-cli-t4.ipynb'...
+[colab] Executing cell 1/13 - Infrastructure: install the locked runtime into an isolated environment...
+{'isolated_environment': '/content/dimer_isolated_env', 'isolated_python': '3.12.12', 'kernel_python': '3.13.15', 'locked_packages': 47, 'setup_seconds': 54}
+[colab] Executing cell 2/13 - Route the remaining cells to the isolated environment...
+Every later code cell now runs in /content/dimer_isolated_env/bin/python (pid 1203).
+[colab] Executing cell 3/13 - bert_masked_lm-07...
+{'notebook_source': {'repository': 'bert-masked-lm-pipeline', 'repository_revision': '18ee9f3e72706a49af8715f53c8251c5d3b0bed8', 'embedded_module': 'src/bert_masked_lm_pipeline/pipeline.py', 'embedded_modules': ['src/bert_masked_lm_pipeline/metrics.py', 'src/bert_masked_lm_pipeline/pipeline.py', 'src/bert_masked_lm_pipeline/samples.py'], 'module_sha256': 'd72d7a0e143f1313052104edd6c61903fc4a772888b40a32ae218738fce06428', 'generator': 'build_notebook.py/2.1', 'notebook_spec': '2.2'}, 'python': '3.12.12', 'torch': '2.14.0+cu130', 'transformers': '4.57.6', 'cuda': True}
+[colab] Executing cell 4/13 - bert_masked_lm-09...
+[colab] Executing cell 5/13 - bert_masked_lm-11...
+[colab] Executing cell 6/13 - bert_masked_lm-13...
+[colab] Executing cell 7/13 - bert_masked_lm-15...
+{'model_id': 'google-bert/bert-base-uncased', 'revision': '86b5e0934494bd15c9632b12f734a8a67f723594', 'license': 'apache-2.0', 'files': 8, 'total_bytes': 441170446}
+{'weights_dir': '/content/weights/bert-base-uncased', 'fetched': ['LICENSE', 'README.md', 'config.json', 'coreml/fill-mask/float32_model.mlpackage/Manifest.json', 'model.safetensors', 'tokenizer.json', 'tokenizer_config.json', 'vocab.txt']}
+{'verified_files': 8, 'revision': '86b5e0934494bd15c9632b12f734a8a67f723594'}
+Some weights of the model checkpoint at /content/weights/bert-base-uncased were not used when initializing BertForMaskedLM: ['bert.pooler.dense.bias', 'bert.pooler.dense.weight', 'cls.seq_relationship.bias', 'cls.seq_relationship.weight']
+- This IS expected if you are initializing BertForMaskedLM from the checkpoint of a model trained on another task or with another architecture (e.g. initializing a BertForSequenceClassification model from a BertForPreTraining model).
+- This IS NOT expected if you are initializing BertForMaskedLM from the checkpoint of a model that you expect to be exactly identical (initializing a BertForSequenceClassification model from a BertForSequenceClassification model).
+{'device': 'cuda:0', 'source': 'local-snapshot'}
+[colab] Executing cell 8/13 - bert_masked_lm-17...
+{'data_source': 'SciTLDR-A (paper abstracts) (allenai/scitldr @ 5ccad9c00a60ad75c9e04abf7f27d0f53f983b20; Apache-2.0 (Cachola et al. 2020; allenai/scitldr))', 'raw_papers': {'train': 1992, 'dev': 619, 'test': 618}, 'splits': {'train': 300, 'validation': 50, 'test': 100}, 'file_sha256': {'train': 'b222771d387b...', 'dev': '3191fa98ccc0...', 'test': 'fb42dd6cd4f4...'}}
+{'token_budget': {'longest_tokens': 411, 'ceiling': 512, 'records_checked': 450}, 'duplicate_texts_dropped': 0}
+{'clozes': 3, 'cloze_source': 'unseen SciTLDR dev abstracts (in none of the splits)', 'records_skipped_without_a_usable_word': 0}
+{'train': {'n': 300, 'unique_texts': 300, 'text_chars': {'min': 369, 'max': 1998}, 'total_chars': 327701, 'digest': '50798982fd48eea1...'}}
+{'validation': {'n': 50, 'unique_texts': 50, 'text_chars': {'min': 348, 'max': 1788}, 'total_chars': 54420, 'digest': 'aea99f0e8be88055...'}}
+{'test': {'n': 100, 'unique_texts': 100, 'text_chars': {'min': 341, 'max': 1832}, 'total_chars': 103710, 'digest': '4fbbae3c2f795d5e...'}}
+{'example': {'id': 'train-0000', 'text': 'We present an approach for anytime predictions in deep neural networks (DNNs). For each test sample, an anytime predictor produces a coarse result quickly, and then continues to refine it until the te...'}}
+{'probe': 'duplicate id', 'rejected': "duplicate id 'same'"}
+{'probe': 'empty text', 'rejected': 'records[0]: text is empty'}
+{'probe': 'missing field', 'rejected': "records[0] is missing 'text'"}
+{'probe': 'too small', 'rejected': '3 records; 8..20000 are required'}
+[colab] Executing cell 9/13 - bert_masked_lm-19...
+{'MAX_TEXT_CHARS': 4000, 'MAX_TEXT_TOKENS': 512, 'MAX_BATCH': 64, 'MAX_TOP_K': 100, 'VOCAB_SIZE': 30522, 'HIDDEN_SIZE': 768, 'MASK_TOKEN': '[MASK]', 'MASK_TOKEN_ID': 103, 'POOLINGS': ('cls', 'mean'), 'DEFAULT_TOP_K': 5}
+{'cloze': 'Many real-world [MASK], e.g', 'gold_word': 'problems', 'candidates': [('systems', 0.107), ('situations', 0.0599), ('phenomena', 0.0572), ('events', 0.0568), ('objects', 0.0566)], 'gold_in_top_k': False, 'seconds': 0.279}
+{'pair_cosine': 0.8624, 'pooling': 'mean', 'n_tokens': [175, 337], 'seconds': 0.085, 'checks': {'top_k_candidates_returned': True, 'scores_descending_in_unit_interval': True, 'tokens_within_vocab': True, 'n_tokens_within_ceiling': True, 'one_unit_vector_per_text': True, 'pooling_as_requested': True}, 'findings': 1, 'score_semantics': 'softmax ranking signal, not a calibrated probability; no threshold shipped'}
+{'clozes_filled_by_the_frozen_model': 3, 'cloze_source': 'unseen SciTLDR dev abstracts (in none of the splits)'}
+[colab] Executing cell 10/13 - bert_masked_lm-21...
+{'unigram_floor': {'perplexity': 1174.57, 'bits_per_token': 10.198, 'top1_accuracy': 0.0422, 'top5_accuracy': 0.1488, 'n_masked': 2983}, 'baseline': 'add-one-smoothed unigram model fitted on the training tokens (ignores context)', 'seconds': 0.6}
+{'frozen_model_test': {'perplexity': 15.09, 'bits_per_token': 3.916, 'top1_accuracy': 0.5334, 'top5_accuracy': 0.7013, 'n_masked': 2983}, 'n_records': 100, 'verdict': 'measured', 'adapted': False, 'seconds': 1.9}
+{'frozen_below_unigram_floor': True}
+{'definitions': {'perplexity': 'exp of the mean negative log-likelihood (natural log) of the original token at every masked position of the held-out records, all masked positions weighted equally; lower is better', 'bits_per_token': 'the same mean negative log-likelihood divided by ln 2', 'mean_nll': 'the mean negative log-likelihood at the masked positions in nats', 'top1_accuracy': "fraction of masked positions whose original token is the model's first candidate", 'top5_accuracy': 'fraction of masked positions whose original token is among the first five candidates', 'masking': "a seeded 15 % of each record's WordPiece tokens (never [CLS]/[SEP], at least one token) replaced by [MASK] — the same positions for every model scored under the same seed"}}
+[colab] Executing cell 11/13 - bert_masked_lm-23...
+{'epoch': 0, 'train_loss': None, 'val_perplexity': 12.89, 'val_top1': 0.545, 'val_top5': 0.7176, 'note': 'frozen model'}
+{'epoch': 1, 'train_loss': 2.6178, 'val_perplexity': 11.14, 'val_top1': 0.5574, 'val_top5': 0.7232}
+{'epoch': 2, 'train_loss': 2.6072, 'val_perplexity': 10.91, 'val_top1': 0.5611, 'val_top5': 0.7337}
+{'objective': 'masked language modelling (continued pre-training)', 'trainable_parameters': 28351488, 'total_parameters': 109514298, 'train_tokens': 63625, 'best_epoch': 2, 'selection': 'lowest validation masked perplexity', 'seconds': 25.5}
+[colab] Executing cell 12/13 - bert_masked_lm-25...
+{'perplexity': {'unigram_floor': 1174.5675, 'frozen': 15.0932, 'adapted': 12.6567}}
+{'bits_per_token': {'unigram_floor': 10.1979, 'frozen': 3.9158, 'adapted': 3.6618}}
+{'top1_accuracy': {'unigram_floor': 0.0422, 'frozen': 0.5334, 'adapted': 0.5448}}
+{'top5_accuracy': {'unigram_floor': 0.1488, 'frozen': 0.7013, 'adapted': 0.7211}}
+{'delta_vs_frozen': {'perplexity': -2.4365, 'bits_per_token': -0.254, 'top1_accuracy': 0.0114, 'top5_accuracy': 0.0198}}
+{'verdict': 'improved: the adapted masked perplexity is below the frozen one'}
+run   data layers epochs       lr seed best   frozen  adapted   delta
+  1 sample      4      2    5e-05    0    2   15.093   12.657  -2.437
+{'report': 'outputs/bert_masked_lm_evaluation_report.json'}
+[colab] Executing cell 13/13 - bert_masked_lm-27...
+{'id': 'unseen-00', 'gold_word': 'problems', 'frozen_candidates': 'systems situations phenomena events objects', 'adapted_candidates': 'applications problems phenomena systems situations', 'gold_in_top_k_frozen': False, 'gold_in_top_k_adapted': True}
+{'id': 'unseen-01', 'gold_word': 'foveation', 'frozen_candidates': 'it this vision photography depth', 'adapted_candidates': 'it this depth photography vision', 'gold_in_top_k_frozen': False, 'gold_in_top_k_adapted': False}
+{'id': 'unseen-02', 'gold_word': 'normalization', 'frozen_candidates': '##ing ##nor ##on learning processing', 'adapted_candidates': '##nor ##ing ##on ##net ##am', 'gold_in_top_k_frozen': False, 'gold_in_top_k_adapted': False}
+{'embedding_shift': {'pair_cosine_frozen': 0.8624, 'pair_cosine_adapted': 0.882, 'self_cosine_frozen_vs_adapted': [0.946, 0.9365]}, 'single_input_report_verdict': 'not-measurable', 'clozes_with_changed_candidates': 3, 'of': 3}
+{'artifact': 'outputs/bert_masked_lm_adapter', 'format': 'org.valcorza.bert-base-uncased.adapter.v1', 'tensors': 64, 'bytes': 113413392, 'sha256': '442dd11c22678952...'}
+Some weights of the model checkpoint at /content/weights/bert-base-uncased were not used when initializing BertForMaskedLM: ['bert.pooler.dense.bias', 'bert.pooler.dense.weight', 'cls.seq_relationship.bias', 'cls.seq_relationship.weight']
+- This IS expected if you are initializing BertForMaskedLM from the checkpoint of a model trained on another task or with another architecture (e.g. initializing a BertForSequenceClassification model from a BertForPreTraining model).
+- This IS NOT expected if you are initializing BertForMaskedLM from the checkpoint of a model that you expect to be exactly identical (initializing a BertForSequenceClassification model from a BertForSequenceClassification model).
+{'reload_parity': {'perplexity_in_memory': 14.735343, 'perplexity_reloaded': 14.735343, 'identical_candidates': 3, 'of': 3, 'embeddings_identical': True}, 'reloaded_best_epoch': 2}
+['bert_masked_lm_adapter', 'bert_masked_lm_cloze.csv', 'bert_masked_lm_evaluation_report.json', 'bert_masked_lm_input_manifest.json', 'bert_masked_lm_result.json', 'bert_masked_lm_train.csv']
+[colab] Saving notebook with outputs to '/home/kurt/colab-runs/bert-masked-lm-pipeline-7b73463-b86093/bert_masked_lm_colab_7b73463_colab-cli-t4_output.ipynb'...
