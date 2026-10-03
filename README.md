@@ -74,7 +74,7 @@ print(pipe.fill_mask("The capital of France is [MASK].")["candidates"][0])
 
 ## Release status
 
-**Candidate** — the notebook was regenerated on 2026-10-03 to fix review findings MLM-M1..M4 and MLM-m1..m5 (isolated uv environment, re-runs that start from the pretrained model, BYOD limits checked before any model call, the guided layer); no hosted run of the new blob exists yet. The previous blob `1d474b2f` (committed at `1c8c93b`) completed on a clean Kaggle Tesla T4 runtime on 2026-09-19 only after an interpreter restart following the install cell (2 passes), which is not a one-pass `Run all`, so it is not Release-grade evidence; see `docs/release-verification.md` and `STATUS.md`. Static and unit checks — including the standalone generator parity checks — are necessary but never the evidence; a one-pass hosted run is.
+**Candidate** — the notebook was regenerated on 2026-10-03 to fix review findings MLM-M1..M4 and MLM-m1..m5 (isolated uv environment, re-runs that start from the pretrained model, BYOD limits checked before any model call, the guided layer); a hosted Colab T4 run of the new blob (2026-10-03, Colab CLI sequential execution) completed the default path in one pass with no restart and 0 errors, and the BYOD and optional-experiment runs are still outstanding. The previous blob `1d474b2f` (committed at `1c8c93b`) completed on a clean Kaggle Tesla T4 runtime on 2026-09-19 only after an interpreter restart following the install cell (2 passes), which is not a one-pass `Run all`, so it is not Release-grade evidence; see `docs/release-verification.md` and `STATUS.md`. Static and unit checks — including the standalone generator parity checks — are necessary but never the evidence; a one-pass hosted run is.
 
 ## Documents
 
