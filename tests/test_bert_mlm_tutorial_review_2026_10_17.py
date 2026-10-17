@@ -277,7 +277,7 @@ def test_a_recorded_hosted_evaluation_makes_a_fresh_runtime_a_reproduction(noteb
     monkeypatch.chdir(tmp_path)
     (tmp_path / "outputs").mkdir()
     scored: list[str] = []
-    ns = _section8(notebook, tmp_path, scored, recorded={"revision": "hosted"})
+    ns = _section8(notebook, tmp_path, scored, recorded={"run": "hosted", "record": "docs/release-verification.md"})
     assert ns["test_look"] == "reproduction" and "fresh-test-0000" in scored
 
 
