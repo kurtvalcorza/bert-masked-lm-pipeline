@@ -32,7 +32,7 @@ after the run.
    perplexity (epoch 0) minus τ, the frozen model is kept ("no adaptation kept").
 4. Configurations that are not picked are **never scored on any test split**.
 
-## Fresh test (scored once)
+## Fresh test (scored only under the pre-registered settings)
 
 - **Pool:** SciTLDR-A `dev.jsonl` (the pinned commit `5ccad9c`) after `filter_records` (200..2,000 characters,
   case-insensitive de-duplication), minus every text (case-insensitive) in the 300 training, 50 validation and 100
@@ -48,14 +48,15 @@ after the run.
   three clozes were only filled with `fill_mask`. This rests on the code of every revision since `3ff35cd` (the
   sample draws validation only from `dev`, and the 2026-10-03 BYOD check used SciTLDR **test** abstracts). The
   build record of the original sweep (`sci-build-2026-09-18`) no longer exists, so this cannot be checked against it.
-- **Scoring:** the picked configuration (or the frozen model, under rule 3) is scored **once** on the fresh test.
-  That number is the reported test result.
+- **Scoring:** the picked configuration (or the frozen model, under rule 3) is scored on the fresh test only under the
+  settings above. That number is the reported test result; a later run with identical settings is a reproduction of
+  it, and a run with any other setting is exploratory and does not score the fresh test.
 
 ## The old test
 
 The 100-abstract test split drawn from `test.jsonl` stays in the notebook, relabelled the **exposed development
-test**: it was seen by the superseded configuration sweep. The picked configuration is scored on it once and the
-number is reported with that label, never as the held-out result.
+test**: it was seen by the superseded configuration sweep. The picked configuration is scored on it under the same
+settings and the number is reported with that label, never as the held-out result.
 
 ## Run budget
 
@@ -63,6 +64,11 @@ The grid runs **on** by default if the estimated hosted T4 time for Run all stay
 from the 2026-10-03 Colab T4 run: 25.5 s per four-layer adaptation, 132.7 s for the whole notebook, so three grid
 adaptations plus the re-training of the pick add roughly 100 s). The CPU build record is produced on a local
 Windows CPU with the pinned `torch 2.14.0+cpu` and is labelled as such, pending a hosted run.
+
+## Wording amendment (2026-10-17, review round 2)
+
+The phrases "scored once" above were reworded to "scored only under the pre-registered settings" (fleet
+score-once rule, 2026-10-17). No setting, grid entry, rule, seed or pool changed; the record below is unchanged.
 
 ## Record
 

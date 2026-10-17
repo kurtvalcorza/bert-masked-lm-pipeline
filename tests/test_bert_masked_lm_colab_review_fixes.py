@@ -217,7 +217,7 @@ def _metrics(perplexity: float) -> dict:
     return {"perplexity": perplexity, "bits_per_token": 1.0, "top1_accuracy": 0.5, "top5_accuracy": 0.7, "n_masked": 9}
 
 
-def _section8_namespace(results, role="pre-registered pick", kept="A") -> dict:
+def _section8_namespace(results, role="pre-registered", kept="A") -> dict:
     scored: list[str] = []
 
     def evaluate(records, **kw):
@@ -225,12 +225,13 @@ def _section8_namespace(results, role="pre-registered pick", kept="A") -> dict:
         return next(results)
 
     return {
-        "json": json, "scored": scored, "RUN_STATE": {"refused": None},
+        "json": json, "scored": scored, "RUN_STATE": {"refused": None}, "Path": Path, "time": __import__("time"), "differs": [] if role == "pre-registered" else ["EPOCHS"],
+        "paired_bootstrap_delta": lambda a, b, **kw: {"ci_low": -1.0, "ci_high": 1.0, "resampled": "stub"},
         "pipe": types.SimpleNamespace(evaluate=evaluate),
         "test_records": [{"id": "fresh-test-0000"}], "val_records": [{"id": "validation-0000"}],
         "exposed_test_records": [{"id": "test-0000"}], "unigram": _metrics(1175.0), "frozen_test": _metrics(15.0),
         "frozen_exposed": _metrics(15.5), "MASK_RATE": 0.15, "SEED": 0, "MODEL_ID": "m", "MODEL_REVISION": "r",
-        "MODEL_KEY": "k", "data_source": "sample", "dataset_manifests": {}, "disjoint": {}, "USE_BYOD": False,
+        "MODEL_KEY": "k", "data_source": "sample", "dataset_manifests": {"test": {"digest": "d"}}, "disjoint": {}, "USE_BYOD": False,
         "paper_ids_digest": lambda records: "digest", "selection": {"picked": "A", "kept": kept}, "grid_rows": [],
         "run_role": role,
         "adapt_result": {"n_trainable": 7_087_872, "best_epoch": 0, "history": [{"val": _metrics(13.0)}]},
@@ -250,7 +251,7 @@ def test_section_8_reports_not_improved_and_keeps_a_run_history(notebook, tmp_pa
     ns.update(pipe=types.SimpleNamespace(evaluate=lambda records, **kw: next(results)))
     exec(compile(source, "<section 8>", "exec"), ns)
     assert ns["verdict"].startswith("improved")
-    assert [(h["run"], h["role"], h["test_delta"]) for h in ns["run_history"]] == [(1, "pre-registered pick", 1.0), (2, "pre-registered pick", -3.0)]
+    assert [(h["run"], h["test_look"], h["test_delta"]) for h in ns["run_history"]] == [(1, "pre-registered evaluation", 1.0), (2, "reproduction", -3.0)]
     report = json.loads((tmp_path / "outputs" / "bert_masked_lm_evaluation_report.json").read_text(encoding="utf-8"))
     assert report["verdict"] == ns["verdict"]
 

@@ -232,7 +232,7 @@ masked perplexity on the 50 validation abstracts. Rule: v* = lowest metric; pick
 2.02 below the frozen validation perplexity 12.8871. The re-trained pick reproduced the grid run exactly
 (`matches_grid_run: True`). B and C were never scored on a test split.
 
-**Fresh test (scored once):** 100 SciTLDR-A `dev` abstracts drawn with `random.Random(20261017)` from the 559 that are in
+**Fresh test (scored only under the pre-registered settings):** 100 SciTLDR-A `dev` abstracts drawn with `random.Random(20261017)` from the 559 that are in
 no split and not among the clozes, de-duplicated by text against every used text, asserted paper- and text-disjoint
 from the training, validation and exposed splits and the clozes; sorted paper-id SHA-256 `d78105385a284abfae3245d32de5568966c364eb90f97532c1ba37761f6c9204`
 (ids in `docs/fresh-test-paper-ids-2026-10-17.txt`), dataset digest `fbcaa0b778b18efc…`, 3,214 masked positions. That
@@ -268,6 +268,33 @@ blob `1a9cb00f` / the local check of blob `218177a3`; new = this record):
 BYOD refusal journey (same record): a JSONL file with 11 distinct documents printed one `byod_refused` message naming the
 file and the split rule (no traceback); Sections 5–9 printed `skipped`; `outputs/bert_masked_lm_run_status.json` was set
 to `invalidated`.
+
+### Fresh-test score-once rule and reproductions (2026-10-17, review round 2)
+
+The fresh test is scored only when every pre-registered setting holds: the SciTLDR-A sample (no BYOD),
+`SPLIT_SEED` 42, `EPOCHS` 2, `BATCH_SIZE` 8, `MASK_RATE` 0.15, `SEED` 0 and the recorded pick (A: four layers at
+5e-5, no `TRAINABLE_LAYERS_OVERRIDE`). Section 7 computes the list of settings that differ; any difference makes
+the run **exploratory**: it is compared on validation only, its reports go to numbered
+`*_exploratory_<n>.json` files and its adapter to `outputs/bert_masked_lm_adapter_exploratory_<n>`, and the
+pre-registered files are left alone. `TOP_K`, `POOLING` and `RUN_GRID` do not change any scored quantity (a
+re-measured grid that picks a different configuration does make the run exploratory). Every report carries
+`test_look` (`pre-registered evaluation`, `reproduction` or `not scored (exploratory)`) and
+`settings_differing_from_preregistration`; pre-registered passes are appended to
+`outputs/bert_masked_lm_preregistered_evaluations.json`.
+
+**Recorded evaluation.** No hosted pre-registered evaluation is recorded yet; the numbers above are the local CPU
+build record. The first hosted Colab run of the pre-registered settings is the evaluation; record it here and set
+`RECORDED_EVALUATION` in Section 8, after which every later identical run, in any runtime, is labelled a
+**reproduction** of it (provided nothing was changed in response to the test number).
+
+**Reproductions.** The round-2 CPU re-run (same host and pins, uncommitted round-2 code) reproduced every number of
+the record: floor 1,237.8358, frozen 14.3925, adapted 11.9667 (Δ −2.4258), exposed 15.09 → 12.5943, validation
+12.8871 → 11.15 → 10.8676. A second pass of Section 8 in the same runtime was labelled `reproduction`; the
+Section 10 one-layer run was labelled `not scored (exploratory)` with `['TRAINABLE_LAYERS']` differing and wrote
+`_exploratory_1` files. Paired bootstrap of the fresh-test Δ (100 records resampled with replacement, both models
+paired on the same masks, 1,000 resamples, seed 0): **95 % interval −3.018 to −1.915**; it reflects record
+sampling only, not mask or training-seed variation. Near-duplicate check (8-word sequences, threshold 30 %): 0
+records outside training.
 
 ## Current status
 

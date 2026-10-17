@@ -97,7 +97,8 @@ def test_pinned_fresh_test_ids_file_matches_the_digest():
 def test_notebook_scores_the_fresh_test_once_and_labels_the_exposed_test(notebook):
     code = "\n".join(_code(notebook))
     assert code.count("adapted_test = pipe.evaluate(test_records") == 1
-    assert "score_test = run_role == 'pre-registered pick' and not kept_frozen" in code
+    assert "score_test = run_role == 'pre-registered' and not kept_frozen" in code
+    assert "scored once" not in code.lower() and "scored once" not in _markdown(notebook).lower()
     assert "parity_records = val_records[:10]" in code
     markdown = _markdown(notebook)
     assert "adapted test perplexity, local Windows CPU" not in markdown
@@ -113,11 +114,12 @@ def test_exploratory_run_does_not_score_the_fresh_test(notebook, tmp_path, monke
     scored = []
     m = {"perplexity": 11.0, "bits_per_token": 1.0, "top1_accuracy": 0.5, "top5_accuracy": 0.7, "n_masked": 9}
     ns = {
-        "json": json, "RUN_STATE": {"refused": None},
+        "json": json, "RUN_STATE": {"refused": None}, "Path": Path, "time": __import__("time"), "differs": ["TRAINABLE_LAYERS"],
+        "paired_bootstrap_delta": None,
         "pipe": types.SimpleNamespace(evaluate=lambda records, **kw: scored.append(records[0]["id"]) or dict(m)),
         "test_records": [{"id": "fresh-test-0000"}], "val_records": [{"id": "validation-0000"}], "exposed_test_records": [{"id": "test-0000"}],
         "unigram": m, "frozen_test": m, "frozen_exposed": m, "MASK_RATE": 0.15, "SEED": 0, "MODEL_ID": "m", "MODEL_REVISION": "r",
-        "MODEL_KEY": "k", "data_source": "sample", "dataset_manifests": {}, "disjoint": {}, "USE_BYOD": False,
+        "MODEL_KEY": "k", "data_source": "sample", "dataset_manifests": {"test": {"digest": "d"}}, "disjoint": {}, "USE_BYOD": False,
         "paper_ids_digest": lambda r: "d", "selection": {"picked": "A", "kept": "A"}, "grid_rows": [], "run_role": "exploratory",
         "adapt_result": {"n_trainable": 1, "best_epoch": 1, "history": [{"val": dict(m, perplexity=12.0)}]}, "adapt_seconds": 1.0,
         "TRAINABLE_LAYERS": 1, "EPOCHS": 2, "LEARNING_RATE": 5e-5,
@@ -125,6 +127,170 @@ def test_exploratory_run_does_not_score_the_fresh_test(notebook, tmp_path, monke
     exec(compile(source, "<section 8>", "exec"), ns)
     assert scored == ["validation-0000"] and ns["adapted_test"] is None and ns["verdict"].startswith("exploratory")
     assert ns["run_history"][-1]["test_adapted"] is None and ns["run_history"][-1]["val_delta"] == -1.0
+    assert ns["test_look"] == "not scored (exploratory)" and ns["report_path"].endswith("_evaluation_report_exploratory_1.json")
+    assert not (tmp_path / "outputs" / "bert_masked_lm_evaluation_report.json").exists()
+    assert not (tmp_path / "outputs" / "bert_masked_lm_preregistered_evaluations.json").exists()
+
+
+# --- Score-once rule (SCORE_ONCE_RULE.md item 7): every pre-registered setting gates the fresh test ------------
+
+
+def _training_cell_role(notebook, **changes):
+    """Run Section 7's training cell with stand-ins and return (run_role, differs)."""
+    source = next(s for s in _code(notebook) if "TRAINABLE_LAYERS_OVERRIDE = 0  # @param" in s)
+    override = changes.pop("TRAINABLE_LAYERS_OVERRIDE", 0)
+    source = source.replace("TRAINABLE_LAYERS_OVERRIDE = 0  # @param", f"TRAINABLE_LAYERS_OVERRIDE = {override}  # @param", 1)
+    history = [{"val": {"perplexity": 12.9}}, {"val": {"perplexity": 11.0}}]
+    ns = {
+        "RUN_STATE": {"refused": None}, "SELECTION_GRID": samples.SELECTION_GRID, "time": __import__("time"),
+        "selection": {"picked": changes.pop("picked", "A"), "kept": "A"}, "grid_rows": [], "report": lambda entry: None,
+        "PREREGISTERED": {"data source": "SciTLDR-A sample", "SPLIT_SEED": 42, "EPOCHS": 2, "BATCH_SIZE": 8, "MASK_RATE": 0.15, "SEED": 0, "config": "A"},
+        "USE_BYOD": False, "SPLIT_SEED": 42, "EPOCHS": 2, "BATCH_SIZE": 8, "MASK_RATE": 0.15, "SEED": 0,
+        "reset_to_pretrained": lambda: None, "train_records": [], "val_records": [],
+        "pipe": types.SimpleNamespace(adapt=lambda *a, **kw: {"history": history, "objective": "mlm", "n_trainable": 1, "n_total": 2, "n_train_tokens": 3, "best_epoch": 1, "selection": "val"}),
+    }
+    ns.update(changes)
+    exec(compile(source, "<section 7 training>", "exec"), ns)
+    return ns["run_role"], ns["differs"]
+
+
+@pytest.mark.parametrize(
+    ("changes", "expected"),
+    [
+        ({"EPOCHS": 4}, ["EPOCHS"]),
+        ({"BATCH_SIZE": 4}, ["BATCH_SIZE"]),
+        ({"SEED": 1}, ["SEED"]),
+        ({"MASK_RATE": 0.2}, ["MASK_RATE"]),
+        ({"SPLIT_SEED": 7}, ["SPLIT_SEED"]),
+        ({"USE_BYOD": True}, ["data source"]),
+        ({"picked": "C"}, ["config", "LEARNING_RATE"]),
+        ({"TRAINABLE_LAYERS_OVERRIDE": 1}, ["TRAINABLE_LAYERS"]),
+    ],
+)
+def test_any_changed_setting_makes_the_run_exploratory(notebook, changes, expected):
+    role, differs = _training_cell_role(notebook, **changes)
+    assert role == "exploratory" and differs == expected
+
+
+def test_pre_registered_settings_score_and_a_repeat_is_a_reproduction(notebook, tmp_path, monkeypatch):
+    assert _training_cell_role(notebook) == ("pre-registered", [])
+    source = next(s for s in _code(notebook) if "adapted_test = pipe.evaluate(test_records" in s)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "outputs").mkdir()
+    scored = []
+    m = {"perplexity": 11.0, "bits_per_token": 1.0, "top1_accuracy": 0.5, "top5_accuracy": 0.7, "n_masked": 9, "per_record": [[2.0, 1]]}
+    ns = {
+        "json": json, "RUN_STATE": {"refused": None}, "Path": Path, "time": __import__("time"), "differs": [],
+        "paired_bootstrap_delta": samples.__dict__.get("paired_bootstrap_delta") or __import__("bert_masked_lm_pipeline").paired_bootstrap_delta,
+        "pipe": types.SimpleNamespace(evaluate=lambda records, **kw: scored.append(records[0]["id"]) or dict(m)),
+        "test_records": [{"id": "fresh-test-0000"}], "val_records": [{"id": "validation-0000"}], "exposed_test_records": [{"id": "test-0000"}],
+        "unigram": m, "frozen_test": dict(m, perplexity=14.0), "frozen_exposed": m, "MASK_RATE": 0.15, "SEED": 0, "MODEL_ID": "m",
+        "MODEL_REVISION": "r", "MODEL_KEY": "k", "data_source": "sample", "dataset_manifests": {"test": {"digest": "d"}}, "disjoint": {},
+        "USE_BYOD": False, "paper_ids_digest": lambda r: "d", "selection": {"picked": "A", "kept": "A"}, "grid_rows": [],
+        "run_role": "pre-registered", "adapt_result": {"n_trainable": 1, "best_epoch": 1, "history": [{"val": dict(m, perplexity=12.0)}]},
+        "adapt_seconds": 1.0, "TRAINABLE_LAYERS": 4, "EPOCHS": 2, "LEARNING_RATE": 5e-5,
+    }
+    exec(compile(source, "<section 8>", "exec"), ns)
+    assert ns["test_look"] == "pre-registered evaluation" and "fresh-test-0000" in scored
+    exec(compile(source, "<section 8>", "exec"), ns)
+    assert ns["test_look"] == "reproduction" and scored.count("fresh-test-0000") == 2
+    log = json.loads((tmp_path / "outputs" / "bert_masked_lm_preregistered_evaluations.json").read_text(encoding="utf-8"))
+    assert [e["test_look"] for e in log] == ["pre-registered evaluation", "reproduction"]
+    report = json.loads((tmp_path / "outputs" / "bert_masked_lm_evaluation_report.json").read_text(encoding="utf-8"))
+    assert report["test_look"] == "reproduction" and report["settings_differing_from_preregistration"] == []
+
+
+def test_paired_bootstrap_and_near_duplicate_warning():
+    from bert_masked_lm_pipeline import near_duplicate_warnings, paired_bootstrap_delta
+
+    frozen = {"per_record": [[2.0 + 0.1 * i, 1] for i in range(20)]}
+    adapted = {"per_record": [[1.8 + 0.1 * i, 1] for i in range(20)]}
+    ci = paired_bootstrap_delta(frozen, adapted, n_boot=200, seed=0)
+    assert ci["ci_low"] <= ci["delta"] <= ci["ci_high"] < 0
+    assert paired_bootstrap_delta(frozen, adapted, n_boot=200, seed=0) == ci
+    with pytest.raises(ValueError, match="same masked positions"):
+        paired_bootstrap_delta(frozen, {"per_record": [[1.0, 2]] * 20})
+    base = "the model learns graph structure from molecules and reports strong results on several public benchmarks today"
+    warn = near_duplicate_warnings({"train": [{"id": "t", "text": base}], "test": [{"id": "x", "text": base + " again"}, {"id": "y", "text": "an unrelated abstract about speech"}]})
+    assert len(warn) == 1 and warn[0].startswith("test:x")
+
+
+def test_exploratory_adapter_is_not_labelled_kept(notebook):
+    section9 = next(s for s in _code(notebook) if "artifact_dir = Path(" in s)
+    assert "'no: exploratory run' if run_role == 'exploratory'" in section9 and "'kept': kept_label" in section9
+    assert "artifact_dir = Path(f'outputs/bert_masked_lm_adapter{run_tag}')" in section9
+
+
+def _section8(notebook, tmp_path, scored, *, run_role="pre-registered", differs=(), recorded=None):
+    source = next(s for s in _code(notebook) if "adapted_test = pipe.evaluate(test_records" in s)
+    assert source.count("RECORDED_EVALUATION = None\n") == 1
+    source = source.replace("RECORDED_EVALUATION = None\n", f"RECORDED_EVALUATION = {recorded!r}\n", 1)
+    m = {"perplexity": 11.0, "bits_per_token": 1.0, "top1_accuracy": 0.5, "top5_accuracy": 0.7, "n_masked": 9, "per_record": [[2.0, 1]]}
+    from bert_masked_lm_pipeline import paired_bootstrap_delta
+
+    ns = {
+        "json": json, "RUN_STATE": {"refused": None}, "Path": Path, "time": __import__("time"), "differs": list(differs),
+        "paired_bootstrap_delta": paired_bootstrap_delta,
+        "pipe": types.SimpleNamespace(evaluate=lambda records, **kw: scored.append(records[0]["id"]) or dict(m)),
+        "test_records": [{"id": "fresh-test-0000"}], "val_records": [{"id": "validation-0000"}], "exposed_test_records": [{"id": "test-0000"}],
+        "unigram": m, "frozen_test": dict(m, perplexity=14.0), "frozen_exposed": m, "MASK_RATE": 0.15, "SEED": 0, "MODEL_ID": "m",
+        "MODEL_REVISION": "r", "MODEL_KEY": "k", "data_source": "sample", "dataset_manifests": {"test": {"digest": "d"}}, "disjoint": {},
+        "USE_BYOD": False, "paper_ids_digest": lambda r: "d", "selection": {"picked": "A", "kept": "A"}, "grid_rows": [],
+        "run_role": run_role, "adapt_result": {"n_trainable": 1, "best_epoch": 1, "history": [{"val": dict(m, perplexity=12.0)}]},
+        "adapt_seconds": 1.0, "TRAINABLE_LAYERS": 4, "EPOCHS": 2, "LEARNING_RATE": 5e-5,
+    }
+    exec(compile(source, "<section 8>", "exec"), ns)
+    return ns
+
+
+def test_a_recorded_hosted_evaluation_makes_a_fresh_runtime_a_reproduction(notebook, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "outputs").mkdir()
+    scored: list[str] = []
+    ns = _section8(notebook, tmp_path, scored, recorded={"revision": "hosted"})
+    assert ns["test_look"] == "reproduction" and "fresh-test-0000" in scored
+
+
+def test_exploratory_reports_never_overwrite_earlier_ones_or_the_preregistered_file(notebook, tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "outputs").mkdir()
+    (tmp_path / "outputs" / "bert_masked_lm_evaluation_report.json").write_text("{\"test_look\": \"pre-registered evaluation\"}", encoding="utf-8")
+    (tmp_path / "outputs" / "bert_masked_lm_evaluation_report_exploratory_1.json").write_text("{}", encoding="utf-8")
+    scored: list[str] = []
+    ns = _section8(notebook, tmp_path, scored, run_role="exploratory", differs=["EPOCHS"])
+    assert ns["test_look"] == "not scored (exploratory)" and scored == ["validation-0000"]
+    assert ns["report_path"].endswith("_evaluation_report_exploratory_2.json")
+    assert (tmp_path / "outputs" / "bert_masked_lm_evaluation_report_exploratory_1.json").read_text(encoding="utf-8") == "{}"
+    assert "pre-registered evaluation" in (tmp_path / "outputs" / "bert_masked_lm_evaluation_report.json").read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("changes", "fresh"),
+    [({}, True), ({"SPLIT_SEED": 7}, False), ({"USE_BYOD": True}, False), ({"SEED": 1}, False), ({"MASK_RATE": 0.2}, False)],
+)
+def test_section_6_reads_the_fresh_test_only_under_preregistered_settings(notebook, changes, fresh):
+    source = next(s for s in _code(notebook) if "section6_preregistered = " in s)
+    for name in ("SEED", "MASK_RATE"):
+        if name in changes:
+            default = "0" if name == "SEED" else "0.15"
+            source = source.replace(f"{name} = {default}  # @param", f"{name} = {changes.pop(name)}  # @param", 1)
+    read: list[str] = []
+    m = {"perplexity": 11.0, "bits_per_token": 1.0, "top1_accuracy": 0.5, "top5_accuracy": 0.7, "n_masked": 9, "n_records": 1, "verdict": "measured", "adapted": False, "definitions": {}}
+
+    def evaluate(records, **kw):
+        read.append(records[0]["id"])
+        return dict(m)
+
+    ns = {
+        "RUN_STATE": {"refused": None}, "time": __import__("time"), "reset_to_pretrained": lambda: None,
+        "USE_BYOD": False, "SPLIT_SEED": 42, "train_records": [], "test_records": [{"id": "fresh-test-0000"}],
+        "val_records": [{"id": "validation-0000"}], "exposed_test_records": [{"id": "test-0000"}],
+        "pipe": types.SimpleNamespace(evaluate=evaluate, unigram_baseline=lambda train, records, **kw: dict(m, baseline="floor")),
+    }
+    ns.update(changes)
+    exec(compile(source, "<section 6>", "exec"), ns)
+    assert ns["section6_preregistered"] is fresh
+    assert ("fresh-test-0000" in read) is fresh and ("test-0000" in read) is fresh
 
 
 # --- T5-2 / T5-8: limitation and wording ----------------------------------------------------------------

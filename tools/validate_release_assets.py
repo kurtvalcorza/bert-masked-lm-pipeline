@@ -50,7 +50,7 @@ CODE_MARKERS = (
     "dropped_duplicates = len(records) - sum(len(part) for part in splits.values())",
     "check_byod_tokens(parts, pipe.count_tokens, max_tokens=MAX_TEXT_TOKENS)",
     "if made is None:",
-    "'BYOD test records (scored in Sections 6 and 8; not unseen documents)'",
+    "'BYOD test records (not unseen documents; a BYOD run is exploratory and does not score them)'",
     "check_split_disjoint(parts)",
     "write_dataset_csv(train_records, 'outputs/bert_masked_lm_train.csv')",
     # Stage 5: both inference contracts with the manifest, rejection probe and sanity checks
@@ -63,8 +63,8 @@ CODE_MARKERS = (
     "'one_unit_vector_per_text': vectors.shape == (2, HIDDEN_SIZE)",
     "before = {rid: [c['token'] for c in pipe.fill_mask(text, top_k=TOP_K)['candidates']] for rid, (text, _gold) in clozes.items()}",
     # Stage 6: the unigram floor and the frozen masked metrics
-    "unigram = pipe.unigram_baseline(train_records, test_records, mask_rate=MASK_RATE, seed=SEED)",
-    "frozen_test = pipe.evaluate(test_records, mask_rate=MASK_RATE, seed=SEED)",
+    "unigram = pipe.unigram_baseline(train_records, eval_records, mask_rate=MASK_RATE, seed=SEED)",
+    "frozen_test = pipe.evaluate(eval_records, mask_rate=MASK_RATE, seed=SEED)",
     # MLM-M2: Sections 5-7 start from the pretrained model; Section 6 refuses an adapted model
     "def reset_to_pretrained():",
     "    pipe = BERTMaskedLMPipeline.from_pretrained(weights_dir=WEIGHTS_DIR)",
@@ -81,7 +81,7 @@ CODE_MARKERS = (
     "fresh_test = build_fresh_test(corpus, {**sample, 'clozes': [r for r, _made in chosen]}, seed=FRESH_TEST_SEED)",
     "for name, layers, lr in SELECTION_GRID:",
     "selection = select_configuration(",
-    "score_test = run_role == 'pre-registered pick' and not kept_frozen",
+    "score_test = run_role == 'pre-registered' and not kept_frozen",
     # T5-5 (DAT20): BYOD refusals are one message and invalidate the run
     "except BYOD_REFUSALS as exc:",
     "if RUN_STATE['refused']:",
@@ -89,6 +89,9 @@ CODE_MARKERS = (
     "'delta_vs_frozen'",
     # MLM-m1: a printed verdict instead of a result-dependent assert; the run history for experiments
     "improved = adapted_test['perplexity'] < frozen_test['perplexity']",
+    "run_role = 'exploratory' if differs else 'pre-registered'",
+    "test_look = 'reproduction' if earlier or RECORDED_EVALUATION else 'pre-registered evaluation'",
+    "section6_preregistered = (USE_BYOD, SPLIT_SEED, MASK_RATE, SEED) == (False, 42, 0.15, 0)",
     "run_history = globals().get('run_history', [])",
     # Stage 9: clozes and embeddings before/after, single-input report, artifact, reload parity, provenance
     "single_report = evaluation_report(",
@@ -118,7 +121,7 @@ MARKDOWN_MARKERS = (
     "**every embedding changes**",
     "classification or other supervised heads, next-sentence prediction, multi-mask filling",
     "SciTLDR-A [2] (Apache-2.0)",
-    # T5-1: configuration chosen on validation by the pre-registered rule; the fresh test scored once
+    # T5-1: configuration chosen on validation by the pre-registered rule; the fresh test scored only under the pre-registered settings
     "pre-registered on 2026-10-17",
     "**exposed development test**",
     # T5-2 (DAT9): the pretraining-overlap limitation
