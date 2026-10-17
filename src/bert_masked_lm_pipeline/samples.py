@@ -318,6 +318,41 @@ def check_split_disjoint(splits: Mapping[str, Sequence[Mapping[str, Any]]]) -> d
     return {name: len(records) for name, records in splits.items()}
 
 
+def near_duplicate_warnings(
+    splits: Mapping[str, Sequence[Mapping[str, Any]]],
+    *,
+    reference: str = "train",
+    n: int = 8,
+    threshold: float = 0.3,
+) -> list[str]:
+    """Records outside `reference` whose word `n`-grams appear there at a share of at least `threshold`.
+
+    `check_split_disjoint` refuses exact repeats only; a lightly edited resubmission or a draft of the same
+    document is a near-duplicate that can leak training text into evaluation.
+    It warns; it does not refuse."""
+
+    def grams(text: str) -> set[tuple[str, ...]]:
+        words = re.findall(r"\w+", str(text).lower())
+        return {tuple(words[i : i + n]) for i in range(len(words) - n + 1)}
+
+    seen: set[tuple[str, ...]] = set()
+    for record in splits.get(reference, []):
+        seen |= grams(record["text"])
+    warnings = []
+    for name, part in splits.items():
+        if name == reference:
+            continue
+        for record in part:
+            own = grams(record["text"])
+            if own:
+                share = len(own & seen) / len(own)
+                if share >= threshold:
+                    warnings.append(
+                        f"{name}:{record['id']} ({share:.0%} of its {n}-word sequences appear in {reference})"
+                    )
+    return warnings
+
+
 def split_dataset(
     records: Sequence[Mapping[str, Any]],
     *,

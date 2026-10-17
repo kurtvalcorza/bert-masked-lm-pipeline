@@ -1,4 +1,11 @@
-from .metrics import METRIC_DEFINITIONS, mask_positions, masked_metrics, record_seed, unigram_baseline
+from .metrics import (
+    METRIC_DEFINITIONS,
+    mask_positions,
+    masked_metrics,
+    paired_bootstrap_delta,
+    record_seed,
+    unigram_baseline,
+)
 from .pipeline import (
     ARTIFACT_FORMAT,
     CLS_TOKEN_ID,
@@ -46,6 +53,7 @@ from .samples import (
     dataset_digest,
     fetch_sample_dataset,
     load_byod_dataset,
+    near_duplicate_warnings,
     paper_ids_digest,
     select_configuration,
     split_dataset,
@@ -98,6 +106,8 @@ __all__ = [
     "load_byod_dataset",
     "mask_positions",
     "masked_metrics",
+    "near_duplicate_warnings",
+    "paired_bootstrap_delta",
     "paper_ids_digest",
     "record_seed",
     "select_configuration",
