@@ -216,7 +216,7 @@ version), `transformers 4.57.6`, float32, `CUDA_VISIBLE_DEVICES=-1`; the 12 lear
 and corpus pre-staged by hard link). That notebook's code cells equal those of the committed blob except the stamped
 revision and the `RECORDED_SELECTION` literal, which the grid cell reads only when `RUN_GRID` is off; its markdown
 predates the worked answers. Not clean-runtime or hosted evidence. Wall time 1,316 s (grid 874 s, re-training of the
-pick 334 s). Executed copies: [`verification/2026-10-17-cpu-build/`](verification/2026-10-17-cpu-build/).
+pick 334 s). Executed copies: [`verification/2026-10-17-cpu-build/`](verification/2026-10-17-cpu-build/). In those copies the local working directory of the run was redacted to `<workdir>` in 10 output strings (8 in the BYOD-refused copy, 1 each in the default and Section 10 copies), keeping the relative tail (for example `<workdir>\weights\bert-base-uncased`); nothing else in them was changed, so they are no longer byte-identical to the files the run wrote.
 
 Fixed settings: `EPOCHS` 2, `BATCH_SIZE` 8, `MASK_RATE` 0.15, `SEED` 0, `SPLIT_SEED` 42. Metric: best-epoch validation
 masked perplexity on the 50 validation abstracts. Rule: v* = lowest metric; pick the first of B → A → C within
