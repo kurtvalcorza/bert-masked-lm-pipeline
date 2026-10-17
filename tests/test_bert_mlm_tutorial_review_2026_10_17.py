@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import subprocess
 import sys
 import types
@@ -172,9 +173,39 @@ def test_any_changed_setting_makes_the_run_exploratory(notebook, changes, expect
     assert role == "exploratory" and differs == expected
 
 
+def _with_recorded(source, recorded):
+    """Replace the committed RECORDED_EVALUATION constant (None simulates the state before any hosted record)."""
+    source, n = re.subn(r"^( *)RECORDED_EVALUATION = .*$", lambda m: f"{m.group(1)}RECORDED_EVALUATION = {recorded!r}", source, count=1, flags=re.M)
+    assert n == 1
+    return source
+
+
+def test_recorded_evaluation_points_at_the_hosted_t4_run(notebook):
+    source = next(s for s in _code(notebook) if "adapted_test = pipe.evaluate(test_records" in s)
+    line = re.search(r"^ *RECORDED_EVALUATION = (.*)$", source, flags=re.M).group(1)
+    recorded = __import__("ast").literal_eval(line)
+    assert recorded["commit"] == "65e6a28" and recorded["notebook_blob"] == "6d4e7d99" and recorded["config"] == "A"
+    assert recorded["fresh_test_perplexity"] == {"frozen": 14.3927, "adapted": 11.9792, "delta": -2.4135, "delta_ci95": [-2.999, -1.902]}
+    assert recorded["exposed_dev_test_perplexity"] == {"frozen": 15.0932, "adapted": 12.6567}
+    assert "'reproduction_of'" in source
+
+
+def test_a_later_identical_hosted_run_is_labelled_a_reproduction(notebook, tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "outputs").mkdir()
+    scored: list[str] = []
+    source = next(s for s in _code(notebook) if "adapted_test = pipe.evaluate(test_records" in s)
+    recorded = __import__("ast").literal_eval(re.search(r"^ *RECORDED_EVALUATION = (.*)$", source, flags=re.M).group(1))
+    ns = _section8(notebook, tmp_path, scored, recorded=recorded)
+    assert ns["test_look"] == "reproduction" and "fresh-test-0000" in scored
+    assert "'reproduction_of': 'hosted Colab T4, Colab account 2, 2026-10-17 (docs/release-verification.md)'" in capsys.readouterr().out
+    report = json.loads((tmp_path / "outputs" / "bert_masked_lm_evaluation_report.json").read_text(encoding="utf-8"))
+    assert report["test_look"] == "reproduction"
+
+
 def test_pre_registered_settings_score_and_a_repeat_is_a_reproduction(notebook, tmp_path, monkeypatch):
     assert _training_cell_role(notebook) == ("pre-registered", [])
-    source = next(s for s in _code(notebook) if "adapted_test = pipe.evaluate(test_records" in s)
+    source = _with_recorded(next(s for s in _code(notebook) if "adapted_test = pipe.evaluate(test_records" in s), None)
     monkeypatch.chdir(tmp_path)
     (tmp_path / "outputs").mkdir()
     scored = []
@@ -223,8 +254,7 @@ def test_exploratory_adapter_is_not_labelled_kept(notebook):
 
 def _section8(notebook, tmp_path, scored, *, run_role="pre-registered", differs=(), recorded=None):
     source = next(s for s in _code(notebook) if "adapted_test = pipe.evaluate(test_records" in s)
-    assert source.count("RECORDED_EVALUATION = None\n") == 1
-    source = source.replace("RECORDED_EVALUATION = None\n", f"RECORDED_EVALUATION = {recorded!r}\n", 1)
+    source = _with_recorded(source, recorded)
     m = {"perplexity": 11.0, "bits_per_token": 1.0, "top1_accuracy": 0.5, "top5_accuracy": 0.7, "n_masked": 9, "per_record": [[2.0, 1]]}
     from bert_masked_lm_pipeline import paired_bootstrap_delta
 

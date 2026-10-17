@@ -334,10 +334,10 @@ to −1.915, exposed 15.0932 → 12.6567 vs 15.0930 → 12.5943; grid B / A / C 
 11.2183 / 10.8676 / 10.8865 (on CPU, C was also within τ; on T4 only A was). These are cross-runtime differences of
 training (GPU vs CPU kernels); no setting was changed in response to any test number.
 
-Follow-ups (not done in this docs-only record): `RECORDED_EVALUATION` in Section 8 is still `None` at blob `6d4e7d99`,
-so a later run of this blob would again label itself `pre-registered evaluation (this runtime)`; setting it to this run,
-and re-quoting the notebook's worked answers (which quote the CPU build record "pending a hosted run") with the figures
-above, are notebook changes for a later revision.
+Follow-ups done in a later revision of PR #9 (the requote): Section 8's `RECORDED_EVALUATION` now names this run, so
+a later hosted run with the pre-registered settings prints `test_look` `reproduction` with `reproduction_of` this run;
+`RECORDED_SELECTION` (used only with `RUN_GRID` off) and the notebook's worked answers quote the figures above, and
+the CPU build record is quoted only as a labelled development look. Prose and constants only; no computed value changed.
 
 ## Current status
 

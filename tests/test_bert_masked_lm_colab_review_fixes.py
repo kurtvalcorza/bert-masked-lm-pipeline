@@ -241,6 +241,9 @@ def _section8_namespace(results, role="pre-registered", kept="A") -> dict:
 
 def test_section_8_reports_not_improved_and_keeps_a_run_history(notebook, tmp_path, monkeypatch, capsys):
     source = _cell(notebook, "adapted_test = pipe.evaluate(test_records")
+    # Simulate the state before any hosted evaluation was recorded: the first pass is then the pre-registered evaluation.
+    source, n = re.subn(r"^( *)RECORDED_EVALUATION = .*$", lambda m: f"{m.group(1)}RECORDED_EVALUATION = None", source, count=1, flags=re.M)
+    assert n == 1
     monkeypatch.chdir(tmp_path)
     (tmp_path / "outputs").mkdir()
     # pick: validation, fresh test (once), exposed development test (once)
@@ -378,7 +381,8 @@ def test_figures_name_their_environment_and_markdown_has_single_braces(notebook)
     assert "[A-Za-z0-9_.:-]{1,64}" in markdown and "`{id, text}`" in markdown
     for stale in ("about four minutes of model time", "the build record measured", "about seven seconds on CPU"):
         assert stale not in markdown
-    assert "CPU build record" in markdown and "pending a hosted run" in markdown
+    assert "pending a hosted run" not in markdown and "hosted evaluation of record" in markdown
+    assert "development build record" in markdown  # the CPU figures stay disclosed as a development look
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "12.59 masked perplexity in the recorded run" not in readme and "12.66 on the Kaggle Tesla T4" in readme
 
