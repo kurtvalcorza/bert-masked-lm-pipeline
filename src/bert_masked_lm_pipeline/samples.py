@@ -244,7 +244,8 @@ def build_fresh_test(
 
     `used` holds the training, validation and earlier test splits and the cloze records. The pool is `dev`
     after `filter_records` minus every used text (case-insensitive), which also removes the abstracts
-    SciTLDR-A repeats across its members; the draw is refused if the pool size or the pinned paper-id digest differs."""
+    SciTLDR-A repeats across its members; the draw is refused if the pool size or the pinned paper-id
+    digest differs."""
     used_texts = {str(r["text"]).lower() for part in used.values() for r in part}
     used_papers = {str(r["paper_id"]) for part in used.values() for r in part if r.get("paper_id")}
     pool = [r for r in filter_records(corpus["dev"]) if r["text"].lower() not in used_texts]
