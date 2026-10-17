@@ -150,7 +150,8 @@ def test_no_learner_text_asks_for_a_restart_and_status_is_candidate(notebook):
 
 def _reset_function(notebook: dict, ns: dict):
     source = _cell(notebook, "def reset_to_pretrained():")
-    block = source.split("def reset_to_pretrained():", 1)[1].split("\nreset_to_pretrained()\n", 1)[0]
+    block = source.split("    def reset_to_pretrained():", 1)[1].split("\n    reset_to_pretrained()\n", 1)[0]
+    block = "\n".join(line[4:] for line in block.split("\n"))
     exec(compile("def reset_to_pretrained():" + block, "<section 5 reset>", "exec"), ns)
     return ns["reset_to_pretrained"]
 
@@ -159,13 +160,15 @@ def test_sections_5_6_and_7_reset_before_using_the_model(notebook):
     for marker, first_use in (
         ("def reset_to_pretrained():", "pipe.fill_mask("),
         ("SEED = 0  # @param", "pipe.unigram_baseline("),
-        ("EPOCHS = 2  # @param", "pipe.adapt("),
+        ("RUN_GRID = True  # @param", "pipe.adapt("),
+        ("TRAINABLE_LAYERS_OVERRIDE = 0  # @param", "pipe.adapt("),
     ):
         source = _cell(notebook, marker)
-        assert "\nreset_to_pretrained()\n" in source, marker
-        assert source.index("\nreset_to_pretrained()\n") < source.index(first_use), marker
+        reset = re.search(r"\n\s*reset_to_pretrained\(\)\n", source)
+        assert reset, marker
+        assert reset.start() < source.index(first_use), marker
     section6 = _cell(notebook, "SEED = 0  # @param")
-    assert "if frozen_test['adapted']:\n    raise RuntimeError(" in section6
+    assert "    if frozen_test['adapted']:\n        raise RuntimeError(" in section6
 
 
 def test_reset_to_pretrained_reloads_only_an_adapted_pipeline(notebook):
@@ -214,26 +217,40 @@ def _metrics(perplexity: float) -> dict:
     return {"perplexity": perplexity, "bits_per_token": 1.0, "top1_accuracy": 0.5, "top5_accuracy": 0.7, "n_masked": 9}
 
 
+def _section8_namespace(results, role="pre-registered pick", kept="A") -> dict:
+    scored: list[str] = []
+
+    def evaluate(records, **kw):
+        scored.append(records[0]["id"] if records else "empty")
+        return next(results)
+
+    return {
+        "json": json, "scored": scored, "RUN_STATE": {"refused": None},
+        "pipe": types.SimpleNamespace(evaluate=evaluate),
+        "test_records": [{"id": "fresh-test-0000"}], "val_records": [{"id": "validation-0000"}],
+        "exposed_test_records": [{"id": "test-0000"}], "unigram": _metrics(1175.0), "frozen_test": _metrics(15.0),
+        "frozen_exposed": _metrics(15.5), "MASK_RATE": 0.15, "SEED": 0, "MODEL_ID": "m", "MODEL_REVISION": "r",
+        "MODEL_KEY": "k", "data_source": "sample", "dataset_manifests": {}, "disjoint": {}, "USE_BYOD": False,
+        "paper_ids_digest": lambda records: "digest", "selection": {"picked": "A", "kept": kept}, "grid_rows": [],
+        "run_role": role,
+        "adapt_result": {"n_trainable": 7_087_872, "best_epoch": 0, "history": [{"val": _metrics(13.0)}]},
+        "adapt_seconds": 1.0, "TRAINABLE_LAYERS": 4, "EPOCHS": 2, "LEARNING_RATE": 5e-5,
+    }
+
+
 def test_section_8_reports_not_improved_and_keeps_a_run_history(notebook, tmp_path, monkeypatch, capsys):
     source = _cell(notebook, "adapted_test = pipe.evaluate(test_records")
     monkeypatch.chdir(tmp_path)
     (tmp_path / "outputs").mkdir()
-    results = iter([_metrics(16.0), _metrics(11.0), _metrics(12.0), _metrics(10.5)])
-    ns = {
-        "json": json,
-        "pipe": types.SimpleNamespace(evaluate=lambda records, **kw: next(results)),
-        "test_records": [], "val_records": [], "unigram": _metrics(1175.0), "frozen_test": _metrics(15.0),
-        "MASK_RATE": 0.15, "SEED": 0, "MODEL_ID": "m", "MODEL_REVISION": "r", "MODEL_KEY": "k",
-        "data_source": "sample", "dataset_manifests": {}, "disjoint": {}, "USE_BYOD": False,
-        "adapt_result": {"n_trainable": 7_087_872, "best_epoch": 0, "history": []}, "adapt_seconds": 1.0,
-        "TRAINABLE_LAYERS": 1, "EPOCHS": 2, "LEARNING_RATE": 5e-5,
-    }
+    # pick: validation, fresh test (once), exposed development test (once)
+    ns = _section8_namespace(iter([_metrics(12.0), _metrics(16.0), _metrics(15.9)]))
     exec(compile(source, "<section 8>", "exec"), ns)  # adapted 16.0 > frozen 15.0: must not raise
-    assert ns["verdict"].startswith("not improved")
-    ns["TRAINABLE_LAYERS"] = 4
+    assert ns["verdict"].startswith("not improved") and ns["scored"] == ["validation-0000", "fresh-test-0000", "test-0000"]
+    results = iter([_metrics(11.0), _metrics(12.0), _metrics(12.5)])
+    ns.update(pipe=types.SimpleNamespace(evaluate=lambda records, **kw: next(results)))
     exec(compile(source, "<section 8>", "exec"), ns)
     assert ns["verdict"].startswith("improved")
-    assert [(h["run"], h["trainable_layers"], h["delta"]) for h in ns["run_history"]] == [(1, 1, 1.0), (2, 4, -3.0)]
+    assert [(h["run"], h["role"], h["test_delta"]) for h in ns["run_history"]] == [(1, "pre-registered pick", 1.0), (2, "pre-registered pick", -3.0)]
     report = json.loads((tmp_path / "outputs" / "bert_masked_lm_evaluation_report.json").read_text(encoding="utf-8"))
     assert report["verdict"] == ns["verdict"]
 
@@ -271,48 +288,57 @@ def test_section_4_accepts_twenty_records_and_reports_duplicates(notebook, tmp_p
     assert "not unseen" in ns["cloze_source"]
 
 
-def test_section_4_refuses_a_small_corpus_naming_the_split_and_minimum(notebook, tmp_path, monkeypatch):
+def _refused(ns: dict, capsys, pattern: str) -> None:
+    """DAT20: a refusal is one printed message and an invalidated run, not an exception."""
+    out = capsys.readouterr().out
+    assert ns["RUN_STATE"]["refused"] and re.search(pattern, ns["RUN_STATE"]["refused"]), ns["RUN_STATE"]
+    assert "'byod_refused'" in out and "Run after" in out and "Traceback" not in out
+    assert "train_records" not in ns and "test_records" not in ns
+
+
+def test_section_4_refuses_a_small_corpus_naming_the_split_and_minimum(notebook, tmp_path, monkeypatch, capsys):
     path = _write_jsonl(tmp_path / "small.jsonl", [_doc(i) for i in range(11)])
-    with pytest.raises(ValueError, match=r"the train split has 7 records .* at least 12 distinct texts"):
-        _run_section4(notebook, tmp_path, monkeypatch, byod_path=str(path))
+    ns = _run_section4(notebook, tmp_path, monkeypatch, byod_path=str(path))
+    _refused(ns, capsys, r"the train split has 7 records .* at least 12 distinct texts")
 
 
-def test_section_4_refuses_an_over_ceiling_record_by_id(notebook, tmp_path, monkeypatch):
+def test_section_4_refuses_an_over_ceiling_record_by_id(notebook, tmp_path, monkeypatch, capsys):
     records = [_doc(i) for i in range(20)] + [{"id": "huge", "text": "word " * 600}]
     path = _write_jsonl(tmp_path / "long.jsonl", records)
-    with pytest.raises(ValueError, match=r":huge \(602 tokens\)"):
-        _run_section4(notebook, tmp_path, monkeypatch, byod_path=str(path))
+    ns = _run_section4(notebook, tmp_path, monkeypatch, byod_path=str(path))
+    _refused(ns, capsys, r":huge \(602 tokens\)")
 
 
-def test_section_4_skips_or_refuses_documents_without_a_usable_cloze_word(notebook, tmp_path, monkeypatch):
+def test_section_4_skips_or_refuses_documents_without_a_usable_cloze_word(notebook, tmp_path, monkeypatch, capsys):
     mixed = [_doc(i, opening="We do it") for i in range(16)] + [_doc(i) for i in range(16, 20)]
     ns = _run_section4(notebook, tmp_path, monkeypatch, byod_path=str(_write_jsonl(tmp_path / "mixed.jsonl", mixed)))
     assert ns["clozes"] and all(c[0].count("[MASK]") == 1 for c in ns["clozes"].values())
+    capsys.readouterr()
     terse = [{"id": f"t{i:02d}", "text": f"We do it. Run {i} is ok."} for i in range(20)]
-    with pytest.raises(ValueError, match="no cloze to fill"):
-        _run_section4(notebook, tmp_path, monkeypatch, byod_path=str(_write_jsonl(tmp_path / "terse.jsonl", terse)))
+    ns = _run_section4(notebook, tmp_path, monkeypatch, byod_path=str(_write_jsonl(tmp_path / "terse.jsonl", terse)))
+    _refused(ns, capsys, "no cloze to fill")
 
 
 # --- MLM-m3: BYOD path field and upload guards ----------------------------------------------------------
 
 
-def test_byod_path_works_without_google_colab_and_bad_paths_are_explained(notebook, tmp_path, monkeypatch):
+def test_byod_path_works_without_google_colab_and_bad_paths_are_explained(notebook, tmp_path, monkeypatch, capsys):
     monkeypatch.setitem(sys.modules, "google.colab", None)
-    with pytest.raises(FileNotFoundError, match="is not a file in this runtime"):
-        _run_section4(notebook, tmp_path, monkeypatch, byod_path=str(tmp_path / "missing.csv"))
-    with pytest.raises(RuntimeError, match="needs Google Colab.*set BYOD_PATH"):
-        _run_section4(notebook, tmp_path, monkeypatch)
+    ns = _run_section4(notebook, tmp_path, monkeypatch, byod_path=str(tmp_path / "missing.csv"))
+    _refused(ns, capsys, "is not a file in this runtime")
+    ns = _run_section4(notebook, tmp_path, monkeypatch)
+    _refused(ns, capsys, "needs Google Colab.*set BYOD_PATH")
 
 
-def test_empty_upload_gives_a_recovery_message(notebook, tmp_path, monkeypatch):
+def test_empty_upload_gives_a_recovery_message(notebook, tmp_path, monkeypatch, capsys):
     google = types.ModuleType("google")
     colab = types.ModuleType("google.colab")
     colab.files = types.SimpleNamespace(upload=lambda: {})
     google.colab = colab
     monkeypatch.setitem(sys.modules, "google", google)
     monkeypatch.setitem(sys.modules, "google.colab", colab)
-    with pytest.raises(RuntimeError, match=r"received 0\).*set BYOD_PATH"):
-        _run_section4(notebook, tmp_path, monkeypatch)
+    ns = _run_section4(notebook, tmp_path, monkeypatch)
+    _refused(ns, capsys, r"received 0\).*set BYOD_PATH")
 
 
 # --- MLM-M4 / MLM-m2 / MLM-m5: guided layer, labelled figures, single braces ------------------------------
@@ -340,7 +366,7 @@ def test_guided_layer_is_present(notebook):
     for setting, section in (("EPOCHS = 4", "Section 7"), ("`SEED`", "Section 6"), ("`POOLING`", "Section 5")):
         line = next(x for x in closing.splitlines() if setting in x)
         assert section in line and "Run after" in line, setting
-    assert "set `TRAINABLE_LAYERS = 1`" in closing and "select the Section 7 cell and choose **Runtime → Run after**" in closing
+    assert "`TRAINABLE_LAYERS_OVERRIDE = 1`" in closing and "select that cell and choose **Runtime → Run after**" in closing
     objectives = markdown.split("**Learning objectives:**", 1)[1].split("\n", 1)[0]
     assert len(re.findall(r"Sections? \d", objectives)) >= 6 and "install the pinned runtime" not in objectives
 
@@ -351,7 +377,7 @@ def test_figures_name_their_environment_and_markdown_has_single_braces(notebook)
     assert "[A-Za-z0-9_.:-]{1,64}" in markdown and "`{id, text}`" in markdown
     for stale in ("about four minutes of model time", "the build record measured", "about seven seconds on CPU"):
         assert stale not in markdown
-    assert "12.66" in markdown and "local Windows CPU pre-flight" in markdown
+    assert "CPU build record" in markdown and "pending a hosted run" in markdown
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "12.59 masked perplexity in the recorded run" not in readme and "12.66 on the Kaggle Tesla T4" in readme
 

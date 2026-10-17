@@ -1,6 +1,6 @@
 """Static release-asset validation for the BERT-Base uncased masked-LM DIMER pipeline.
 
-Checks the STANDALONE tutorial notebook (DIMER Notebook Specification 2.2 §4), the tutorial
+Checks the STANDALONE tutorial notebook (DIMER Notebook Specification 2.5 §4), the tutorial
 registry, model card, README, STATUS.md and weight documentation for source conformance and
 cross-document identity consistency, and runs the generator parity checks (PAR1–PAR3).
 
@@ -41,17 +41,17 @@ CODE_MARKERS = (
     # Stage 4: pinned corpus, validation, disjoint split, CSV, refusal probes
     "USE_BYOD = False",
     "corpus = read_corpus(fetch_corpus(cache_dir='weights/scitldr'))",
-    "splits = build_sample_dataset(corpus, seed=SPLIT_SEED)",
+    "sample = build_sample_dataset(corpus, seed=SPLIT_SEED)",
     "records = load_byod_dataset(byod_path)",
-    "dataset_manifests = {name: validate_dataset(part, min_records=MIN_RECORDS if name == 'train' else 1) for name, part in splits.items()}",
+    "manifests = {name: validate_dataset(part, min_records=MIN_RECORDS if name == 'train' else 1) for name, part in parts.items()}",
     # MLM-M3 / MLM-m3: BYOD path field, upload guards, token ceiling and cloze checks before any model call
     "BYOD_PATH = ''",
     "if len(uploaded) != 1:",
     "dropped_duplicates = len(records) - sum(len(part) for part in splits.values())",
-    "token_budget = check_byod_tokens(splits, pipe.count_tokens, max_tokens=MAX_TEXT_TOKENS)",
+    "check_byod_tokens(parts, pipe.count_tokens, max_tokens=MAX_TEXT_TOKENS)",
     "if made is None:",
-    "cloze_source = 'BYOD test records (scored in Sections 6 and 8; not unseen documents)'",
-    "disjoint = check_split_disjoint(splits)",
+    "'BYOD test records (scored in Sections 6 and 8; not unseen documents)'",
+    "check_split_disjoint(parts)",
     "write_dataset_csv(train_records, 'outputs/bert_masked_lm_train.csv')",
     # Stage 5: both inference contracts with the manifest, rejection probe and sanity checks
     "input_manifest = validate_inputs([cloze, *pair_texts], top_k=TOP_K, pooling=POOLING, names=['cloze', 'pair-a', 'pair-b'])",
@@ -77,6 +77,14 @@ CODE_MARKERS = (
     "mask_rate=MASK_RATE",
     # Stage 8: held-out evaluation, comparison, assertion
     "adapted_test = pipe.evaluate(test_records, mask_rate=MASK_RATE, seed=SEED)",
+    # T5-1: the fresh test, the pre-registered grid and the selection rule
+    "fresh_test = build_fresh_test(corpus, {**sample, 'clozes': [r for r, _made in chosen]}, seed=FRESH_TEST_SEED)",
+    "for name, layers, lr in SELECTION_GRID:",
+    "selection = select_configuration(",
+    "score_test = run_role == 'pre-registered pick' and not kept_frozen",
+    # T5-5 (DAT20): BYOD refusals are one message and invalidate the run
+    "except BYOD_REFUSALS as exc:",
+    "if RUN_STATE['refused']:",
     "adapted_val = pipe.evaluate(val_records, mask_rate=MASK_RATE, seed=SEED)",
     "'delta_vs_frozen'",
     # MLM-m1: a printed verdict instead of a result-dependent assert; the run history for experiments
@@ -109,7 +117,14 @@ MARKDOWN_MARKERS = (
     "no dispersion estimate",
     "**every embedding changes**",
     "classification or other supervised heads, next-sentence prediction, multi-mask filling",
-    "Apache-2.0 (Cachola et al., 2020)",
+    "SciTLDR-A [2] (Apache-2.0)",
+    # T5-1: configuration chosen on validation by the pre-registered rule; the fresh test scored once
+    "pre-registered on 2026-10-17",
+    "**exposed development test**",
+    # T5-2 (DAT9): the pretraining-overlap limitation
+    "a small pretraining overlap cannot be",
+    # DOC17: the canonical use notice
+    "> **⚠️ Notice.** For research, training and evaluation only.",
 )
 # Learner-facing text the review fixes removed; it must not come back (MLM-M1 restart/install text, MLM-M3 the wrong
 # BYOD minimum, MLM-m2 timings without an environment, MLM-m1 a result-dependent assertion).
@@ -122,6 +137,12 @@ STALE_MARKDOWN = (
     "the cell asserts the adapted perplexity is lower",
     "re-run from that cell",
     "Restart the runtime, then rerun",
+    # T5-1: the superseded test-split sweep and the over-claims about the test split
+    "adapted test perplexity, local Windows CPU",
+    "The test split was never used for training or epoch selection",
+    "on an independent split",
+    # T5-8: reload parity is a 1e-6 tolerance for perplexity
+    "Reload parity was exact",
 )
 # The guided layer (NOTEBOOK_SPEC 2.2 §3.5, GDL1-GDL15; review MLM-M4): each marker with its minimum count.
 GUIDED_MARKERS = (
@@ -163,10 +184,10 @@ FORBIDDEN_OUTSIDE_MODULE = (
 # ---------------------------------------------------------------------------
 # Shared checks. Everything below is source/structure validation only. Passing
 # these checks is NOT clean-runtime execution evidence under DIMER Notebook
-# Specification 2.2; see docs/release-verification.md for the release gate.
+# Specification 2.5; see docs/release-verification.md for the release gate.
 # ---------------------------------------------------------------------------
 
-NOTEBOOK_SPEC = "2.2"
+NOTEBOOK_SPEC = "2.5"
 ALLOWED_PROFILES = {"E2E", "ARTIFACT-INFERENCE", "TASK-INFERENCE", "MULTI-CAPABILITY", "SMOKE"}
 STATUS_TOKENS = ("Candidate", "Release-grade")
 PLACEHOLDER = re.compile(r"\b(TODO|TBD|FIXME)\b|Insert text here|Tooltip:", re.I)
@@ -239,7 +260,7 @@ COMMON_MARKDOWN_MARKERS = (
     "without the repository being",
     "It does **not** establish benchmark superiority",
     "## References",
-    f"- Repository model card: https://github.com/kurtvalcorza/{REPO_NAME}/blob/main/MODEL_CARD.md",
+    f"model card (https://github.com/kurtvalcorza/{REPO_NAME}/blob/main/MODEL_CARD.md)",  # IEEE reference [6] (DOC14)
 )
 # Patterns that must never appear in tutorial code (comment-stripped), in any cell.
 FORBIDDEN_PATTERNS = (
@@ -487,6 +508,7 @@ def _validate_notebook_structure(path: Path, notebook: dict) -> tuple[list[tuple
     spec = dimer.get("notebook_spec", dimer.get("notebook_spec_version"))
     _check(spec == NOTEBOOK_SPEC, f"{path.name}: metadata.dimer must declare notebook spec version '{NOTEBOOK_SPEC}'")
     _check(dimer.get("notebook_mode") in ("REFERENCE", "GUIDED", "WORKSHOP"), f"{path.name}: metadata.dimer.notebook_mode must declare a §3.3 pedagogical mode")
+    _check(dimer.get("notebook_kind") in ("TUTORIAL", "DEMO", "WORKSHOP", "CAPSTONE"), f"{path.name}: metadata.dimer.notebook_kind must declare a §3.7 kind (KND1)")
     _check(dimer.get("standalone") is True, f"{path.name}: metadata.dimer.standalone must be true (ST6)")
     generated = dimer.get("generated_from")
     _template = _load_tool("notebook_template").TEMPLATE

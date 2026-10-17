@@ -201,6 +201,74 @@ sample-sanity observations on a 100-abstract sample, not benchmark claims.
 Not exercised by this run: the BYOD positive and negative runs, the optional-experiment re-runs (`TRAINABLE_LAYERS`,
 `SEED`), and an equivalent Kaggle run.
 
+### Configuration re-selection on validation and the fresh test (2026-10-17, CPU build record)
+
+Review finding T5-1 (tutorial triage 2026-10-15, row 5): `TRAINABLE_LAYERS = 4` had been chosen by a three-configuration
+sweep scored on the 100-abstract **test** split (two layers at 1e-4: 12.96, four layers at 1e-4: 12.51, four layers at
+5e-5: 12.59; added in `3ff35cd`, build record no longer on disk). The owner ruled on 2026-10-17 to re-select on
+validation with a pre-registered grid and to report a fresh, never-scored test. The protocol was committed first, in
+`3fa61c9` (`docs/reselection-preregistration-2026-10-17.md`), before any configuration was trained; the fresh-test draw
+and its pinned paper-id digest were committed in `7649050`, also before any scoring.
+
+**CPU build record, pending a hosted run.** Executor: local Windows CPU, CPython 3.12.14, `torch 2.14.0+cpu` (the pinned
+version), `transformers 4.57.6`, float32, `CUDA_VISIBLE_DEVICES=-1`; the 12 learner cells of the notebook generated at
+`602d058` executed verbatim in one namespace (the two kernel cells skipped, `DIMER_NOTEBOOK_CI_PREINSTALLED=1`, snapshot
+and corpus pre-staged by hard link). That notebook's code cells equal those of the committed blob except the stamped
+revision and the `RECORDED_SELECTION` literal, which the grid cell reads only when `RUN_GRID` is off; its markdown
+predates the worked answers. Not clean-runtime or hosted evidence. Wall time 1,316 s (grid 874 s, re-training of the
+pick 334 s). Executed copies: [`verification/2026-10-17-cpu-build/`](verification/2026-10-17-cpu-build/).
+
+Fixed settings: `EPOCHS` 2, `BATCH_SIZE` 8, `MASK_RATE` 0.15, `SEED` 0, `SPLIT_SEED` 42. Metric: best-epoch validation
+masked perplexity on the 50 validation abstracts. Rule: v* = lowest metric; pick the first of B → A → C within
+τ = 0.10 of v*; keep it only if it is below the frozen validation perplexity minus τ.
+
+| Config | Layers | LR | Validation perplexity by epoch | Best | Within τ of v* | Seconds |
+|---|---|---|---|---|---|---|
+| B | 2 | 5e-5 | 12.8871 → 11.52 → 11.2183 | 11.2183 | no (+0.351) | 276.6 |
+| A | 4 | 5e-5 | 12.8871 → 11.15 → 10.8676 | **10.8676 = v*** | yes | 304.6 |
+| C | 4 | 1e-4 | 12.8871 → 11.05 → 10.8865 | 10.8865 | yes (+0.019) | 290.7 |
+
+**Winner: A** (four layers at 5e-5, the previous default), the first of B → A → C within τ; kept, since 10.8676 is
+2.02 below the frozen validation perplexity 12.8871. The re-trained pick reproduced the grid run exactly
+(`matches_grid_run: True`). B and C were never scored on a test split.
+
+**Fresh test (scored once):** 100 SciTLDR-A `dev` abstracts drawn with `random.Random(20261017)` from the 559 that are in
+no split and not among the clozes, de-duplicated by text against every used text, asserted paper- and text-disjoint
+from the training, validation and exposed splits and the clozes; sorted paper-id SHA-256 `d78105385a284abfae3245d32de5568966c364eb90f97532c1ba37761f6c9204`
+(ids in `docs/fresh-test-paper-ids-2026-10-17.txt`), dataset digest `fbcaa0b778b18efc…`, 3,214 masked positions. That
+these 559 were never scored rests on the code of every earlier revision (the only scored `dev` split is validation;
+the clozes are only filled; the 2026-10-03 BYOD check used SciTLDR **test** abstracts); the earlier sweep's build record
+no longer exists, so it cannot be checked against it.
+
+| Split | Unigram floor | Frozen | Adapted (A) | Δ perplexity | Top-1 frozen → adapted | Top-5 frozen → adapted |
+|---|---|---|---|---|---|---|
+| **Fresh test** (held-out result) | 1,237.84 | 14.3925 | **11.9667** | **−2.4258** | 54.54 → 55.44 % | 71.38 → 72.71 % |
+| Exposed development test (seen by the superseded sweep) | — | 15.0930 | 12.5943 | −2.4987 | — | — |
+
+**Old → new for every number the notebook reports** (old = the notebook text at `da560a6`, the CPU pre-flight of
+blob `1a9cb00f` / the local check of blob `218177a3`; new = this record):
+
+| Quantity | Old | New |
+|---|---|---|
+| Reported test split | old 100-abstract `test` draw | fresh 100-abstract `dev` draw (the old one is the exposed development test) |
+| Unigram floor perplexity (top-1) | 1,174.6 (4.2 %) on the old test | 1,237.84 (3.7 %) on the fresh test |
+| Frozen test perplexity (top-1, top-5) | 15.09 (53.3 %, 70.1 %) | 14.39 (54.5 %, 71.4 %); exposed 15.09 |
+| Configuration and how chosen | 4 layers @ 5e-5, test sweep | 4 layers @ 5e-5 (A), validation grid |
+| Validation perplexity of the pick | 12.89 → 11.15 → 10.87 | 12.89 → 11.15 → 10.87 (unchanged) |
+| Adapted test perplexity (Δ) | 12.59 (−2.50), T4 12.66 | 11.97 (−2.43) on the fresh test; exposed 12.59 (−2.50) |
+| Adapted top-1 / top-5 | 54.8 % / 72.2 % | 55.4 % / 72.7 % |
+| Longest record | 411 of 512 tokens (450 records) | 411 of 512 tokens (550 records) |
+| Section 5 cloze and pair | `problems`; top score 0.107; pair cosine 0.8624 | unchanged |
+| Section 9 cosines to frozen self, pair after | 0.9466 / 0.9385; 0.8835 | unchanged |
+| Reload parity | ten **test** records, 14.966474, "exact" | ten **validation** records, 10.284235 both ways, within 1e-6; candidates and embeddings identical |
+| Adapter | 64 tensors, 113,413,392 B, `f1d2eb9d…` | unchanged |
+| Section 10, one layer | test 13.36 (Δ −1.73); val 12.89 → 11.77 → 11.45 | validation only: 12.89 → 11.77 → 11.45 (Δ −1.43 vs −2.02); test not scored; 16 tensors, 28,353,352 B; parity held |
+| CPU time of one 4-layer adaptation | 206.9 s (pre-flight) | 304.6 s in the grid, 334.0 s re-trained (shared host) |
+
+BYOD refusal journey (same record): a JSONL file with 11 distinct documents printed one `byod_refused` message naming the
+file and the split rule (no traceback); Sections 5–9 printed `skipped`; `outputs/bert_masked_lm_run_status.json` was set
+to `invalidated`.
+
 ## Current status
 
-**Candidate.** The notebook was regenerated on 2026-10-03 (review fixes MLM-M1..M4 / MLM-m1..m5, isolated runtime) and a hosted Colab T4 run of the new blob (`218177a3` at `7b73463`) is recorded above: default path, 13/13 code cells in one pass with no restart and 0 errors (Colab CLI sequential execution, not a browser `Run all`). The previous blob `1d474b2f` (committed at `1c8c93b`) completed on a clean Kaggle Tesla T4 runtime on 2026-09-19 only in 2 passes, with an interpreter restart after the install cell (272.5 s for pass 2, 21 files, 447 MB fetched from the Hub and digest-verified inside the notebook); a restart-dependent run is not a one-pass `Run all` (NOTEBOOK_SPEC §5, RUN10), so that row was never Release-grade evidence and is kept as history. It stays Candidate: promotion still needs a BYOD positive and negative run and an optional experiment re-run as instructed, an equivalent Kaggle run, and maintainer review of that evidence, recorded here.
+**Candidate.** The 2026-10-17 review fix (T5-1..T5-8) changed the notebook blob: its numbers come from the CPU build record above (revision `602d058`), and no hosted run of the new blob exists yet, so a hosted Colab T4 run of the new blob is required before any of them count as recorded-run evidence (REL13, REL14). Earlier history: The notebook was regenerated on 2026-10-03 (review fixes MLM-M1..M4 / MLM-m1..m5, isolated runtime) and a hosted Colab T4 run of the new blob (`218177a3` at `7b73463`) is recorded above: default path, 13/13 code cells in one pass with no restart and 0 errors (Colab CLI sequential execution, not a browser `Run all`). The previous blob `1d474b2f` (committed at `1c8c93b`) completed on a clean Kaggle Tesla T4 runtime on 2026-09-19 only in 2 passes, with an interpreter restart after the install cell (272.5 s for pass 2, 21 files, 447 MB fetched from the Hub and digest-verified inside the notebook); a restart-dependent run is not a one-pass `Run all` (NOTEBOOK_SPEC §5, RUN10), so that row was never Release-grade evidence and is kept as history. It stays Candidate: promotion still needs a BYOD positive and negative run and an optional experiment re-run as instructed, an equivalent Kaggle run, and maintainer review of that evidence, recorded here.
