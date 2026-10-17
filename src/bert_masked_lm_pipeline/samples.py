@@ -2,7 +2,9 @@
 paper abstracts, validation, seeded splitting, BYOD loaders and CSV export.
 
 The default corpus is **real** and away from BERT's BooksCorpus + Wikipedia pre-training distribution: the
-abstracts of computer-science papers shipped by SciTLDR (Cachola et al., EMNLP Findings 2020; Apache-2.0). The
+abstracts of computer-science papers shipped by SciTLDR (Cachola et al., EMNLP Findings 2020; Apache-2.0).
+Some of those papers are 2017-2018 OpenReview submissions, so an overlap with the English Wikipedia text BERT
+was pretrained on cannot be ruled out (unchecked; verbatim abstracts in article text are unlikely). The
 three `SciTLDR-A` JSON-Lines files are fetched one by one from the project repository at a pinned commit and
 refused on any byte-size or SHA-256 mismatch; only the abstract text is used here. The frozen model's masked
 perplexity on held-out abstracts is the number to beat, and the fine-tuning question is whether a bounded
@@ -50,6 +52,17 @@ MAX_RECORDS = 20_000
 # needs at least this many test and validation records besides MIN_RECORDS training records.
 MIN_TEST_RECORDS = 2
 MIN_VAL_RECORDS = 1
+# Pre-registered re-selection (docs/reselection-preregistration-2026-10-17.md): three configurations scored
+# on the validation split only, picked by the first of B -> A -> C within SELECTION_TAU of the best, and kept
+# only if the pick beats the frozen model's validation perplexity by more than SELECTION_TAU.
+SELECTION_GRID = (("B", 2, 5e-5), ("A", 4, 5e-5), ("C", 4, 1e-4))
+SELECTION_TAU = 0.10
+# The fresh test: 100 never-scored SciTLDR-A dev abstracts (outside every split and the clozes), drawn once
+# with this seed; the sorted paper ids' SHA-256 was pinned after the draw and before any scoring.
+FRESH_TEST_SEED = 20261017
+FRESH_TEST_SIZE = 100
+FRESH_TEST_POOL_SIZE = 559
+FRESH_TEST_PAPER_IDS_SHA256 = "d78105385a284abfae3245d32de5568966c364eb90f97532c1ba37761f6c9204"
 _ID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,64}$")
 
 
@@ -210,6 +223,80 @@ def validate_dataset(
         "total_chars": sum(len(r["text"]) for r in checked),
         "digest": dataset_digest(checked),
         "model_id": MODEL_ID,
+    }
+
+
+def paper_ids_digest(records: Sequence[Mapping[str, Any]]) -> str:
+    """SHA-256 of the sorted `paper_id`s, one per line: the pinned identity of a drawn split."""
+    return _sha256_bytes("\n".join(sorted(str(r["paper_id"]) for r in records)).encode("utf-8"))
+
+
+def build_fresh_test(
+    corpus: Mapping[str, Sequence[Mapping[str, Any]]],
+    used: Mapping[str, Sequence[Mapping[str, Any]]],
+    *,
+    seed: int = FRESH_TEST_SEED,
+    size: int = FRESH_TEST_SIZE,
+    expected_pool: int | None = FRESH_TEST_POOL_SIZE,
+    expected_sha256: str | None = FRESH_TEST_PAPER_IDS_SHA256,
+) -> list[dict[str, Any]]:
+    """A seeded draw of never-scored `dev` abstracts, disjoint by text and paper id from every `used` group.
+
+    `used` holds the training, validation and earlier test splits and the cloze records. The pool is `dev`
+    after `filter_records` minus every used text (case-insensitive), which also removes the abstracts
+    SciTLDR-A repeats across its members; the draw is refused if the pool size or the pinned paper-id digest differs."""
+    used_texts = {str(r["text"]).lower() for part in used.values() for r in part}
+    used_papers = {str(r["paper_id"]) for part in used.values() for r in part if r.get("paper_id")}
+    pool = [r for r in filter_records(corpus["dev"]) if r["text"].lower() not in used_texts]
+    if expected_pool is not None and len(pool) != expected_pool:
+        raise ValueError(f"the never-scored dev pool has {len(pool)} abstracts, expected {expected_pool}")
+    if size > len(pool):
+        raise ValueError(f"requested {size} fresh-test records but only {len(pool)} are never scored")
+    random.Random(seed).shuffle(pool)
+    fresh = [
+        {"id": f"fresh-test-{i:04d}", "text": r["text"], "paper_id": r["paper_id"]}
+        for i, r in enumerate(pool[:size])
+    ]
+    papers = {r["paper_id"] for r in fresh}
+    texts = {r["text"].lower() for r in fresh}
+    if papers & used_papers or texts & used_texts or len(papers) != size or len(texts) != size:
+        raise ValueError("the fresh test is not paper- and text-disjoint from the used splits")
+    if expected_sha256 is not None and paper_ids_digest(fresh) != expected_sha256:
+        raise ValueError(
+            "the fresh-test draw does not reproduce the pinned paper ids "
+            f"(got {paper_ids_digest(fresh)[:16]}..., pinned {expected_sha256[:16]}...)"
+        )
+    return fresh
+
+
+def select_configuration(
+    best_val: Mapping[str, float],
+    frozen_val: float,
+    *,
+    tau: float = SELECTION_TAU,
+    order: Sequence[str] = tuple(name for name, _layers, _lr in SELECTION_GRID),
+) -> dict[str, Any]:
+    """The pre-registered rule: the first config in `order` within `tau` of the best validation perplexity,
+    kept only if it is below the frozen validation perplexity minus `tau` (else the frozen model is kept)."""
+    if set(best_val) != set(order):
+        raise ValueError(f"expected validation results for {list(order)}, got {sorted(best_val)}")
+    v_star = min(best_val.values())
+    within = [name for name in order if best_val[name] <= v_star + tau]
+    picked = within[0]
+    beats_frozen = best_val[picked] < frozen_val - tau
+    return {
+        "rule": "first of "
+        + " -> ".join(order)
+        + " within tau of the best validation perplexity; kept only if below the frozen validation "
+        "perplexity minus tau",
+        "selection_split": "validation",
+        "tau": tau,
+        "best_val_perplexity": {name: best_val[name] for name in order},
+        "v_star": v_star,
+        "within_tau": within,
+        "picked": picked,
+        "frozen_val_perplexity": frozen_val,
+        "kept": picked if beats_frozen else "frozen",
     }
 
 
