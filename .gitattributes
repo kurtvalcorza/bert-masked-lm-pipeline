@@ -3,3 +3,9 @@ weights/** -text
 
 # Colab CLI T4 run evidence is digest-verified and must remain byte-exact.
 docs/verification/2026-10-03-colab-t4/** -text
+
+# Local CPU build record of the 2026-10-17 re-selection; byte-exact copies.
+docs/verification/2026-10-17-cpu-build/** -text
+
+# Hosted run evidence (executed notebook, exec.log, run_summary.json) is digest-verified and must remain byte-exact.
+docs/execution-evidence/** -text

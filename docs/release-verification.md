@@ -165,7 +165,9 @@ general estimates. No hosted run of the earlier `TASK-INFERENCE` notebook was ev
 
 | Date (UTC) | Commit / notebook blob | Executor | Path exercised | Wall | Outcome |
 |---|---|---|---|---|---|
-| 2026-10-03 | `7b7346351c41aba32a427bd18d19083a5264b35b` / `218177a350884efbe139bc53dfcb360985dc5901` (current review-fix version) | Colab CLI sequential execution (`colab exec -f`), fresh VM, Tesla T4 (`gpu: T4`, device `cuda:0`); not a browser `Run all`, so the saved notebook has no execution counts; cell order is taken from `exec.log` (cells 1..13 in sequence) | Default settings only (BYOD gated off, every form parameter at its default); no repository checkout; empty Hugging Face cache (all 8 snapshot files fetched) | 132.7 s | **one pass, no restart, 0 errors**; 13/13 code cells (cells 4-6 are carried module definitions with no output by design); executed code-cell sources identical to the blob; metrics below; [retained evidence](verification/2026-10-03-colab-t4/) |
+| 2026-10-17 (16:01:13 UTC start) | `b6ac4dab9f924b4cbe48d67b1929fbe4b431395c` / `29046e22a5be89792aed79f0f42257a7b76d0a13` (current; carried revision `3ec3c91854df`, generator `build_notebook.py/2.1`, NOTEBOOK_SPEC 2.5) | Colab CLI 0.7.4 sequential execution (`colab exec -f`, not a browser `Run all`; order from `exec.log`, no execution counts), fresh Colab Tesla T4 VM on Colab account 2 (session `suite-bert-b6ac4da-b860`, stopped after the run), committed blob fetched at the commit and checked before the VM was allocated; kernel Python 3.13.15, isolated CPython 3.12.12 environment (47 locked packages, setup 53 s), `cuda:0`, float32 | Default settings only (pre-registered path: SciTLDR-A sample, no BYOD, `RUN_GRID` on, every form parameter at its default); no repository checkout | 219.0 s | **one pass, 0 errors — reproduction of the pre-registered evaluation** (REL13: hosted Colab T4, this blob); 14/14 code cells in order; source identity with the committed blob OK (31/31 cells, param toggles only); Section 8 printed `test_look` `reproduction`, `settings_differing_from_preregistration` `[]`, `reproduction_of` the 12:40:15 UTC run; grid B / A / C 11.2772 / 10.9148 / 11.0470, winner A, `matches_grid_run` True; fresh test floor 1,237.8358, frozen 14.3927 → adapted 11.9792 (Δ −2.4135, 95 % interval −2.999 to −1.902), top-1 0.5454 → 0.5532, top-5 0.7138 → 0.7274; exposed development test 15.0932 → 12.6567; reload parity 10.512323 both, 3/3, embeddings identical — every figure equal to the evaluation of record (see *Hosted Colab T4 reproduction* below); evidence in `docs/execution-evidence/2026-10-17/`: `bert_masked_lm_colab_b6ac4da_colab-cli-t4_output.ipynb` SHA-256 `154971391bdba885445f69454b7ba490fca9d2ce508d59b4cb417ed41c88e0a5`, `..._run_summary.json` `dbf738834c3ba76ad9cd4413070a2eff4846b4fb57e5b75843df15adc38f0e90`, `..._exec.log` `aa051df84efb2643018e2c171b940d599a20d8cc6bb6c5fa661daedd466b251a` |
+| 2026-10-17 (12:40:15 UTC start) | `65e6a28a59f723c3b7b7a97aba6324897eb4428b` / `6d4e7d994e33cfb138393b36e3d72b1eac9b881e` (evaluation of record, earlier blob; carried revision `0e258925cb1e`, generator `build_notebook.py/2.1`, NOTEBOOK_SPEC 2.5) | Colab CLI 0.7.4 sequential execution (`colab exec -f`, not a browser `Run all`; order from `exec.log`, no execution counts), fresh Colab Tesla T4 VM on Colab account 2 (session `suite-bert-65e6a28-b860`, stopped after the run), committed blob fetched at the commit and checked before the VM was allocated; kernel Python 3.13.15, isolated CPython 3.12.12 environment (47 locked packages, setup 50 s), `torch 2.14.0+cu130`, `transformers 4.57.6`, `cuda:0`, float32 | Default settings only (pre-registered path: SciTLDR-A sample, no BYOD, `RUN_GRID` on, every form parameter at its default); no repository checkout | 275.2 s | **one pass, 0 errors — pre-registered evaluation of record** (REL13: hosted Colab T4, this blob); 14/14 code cells in order (cells 4-6 are carried module definitions with no output by design); source identity with the committed blob OK; 8 snapshot files verified; splits 300 / 50 / 100 exposed / 100 fresh (seed 20261017, paper-id digest `d78105385a284abf…`); grid winner A; Section 8 printed `test_look` `pre-registered evaluation` with no differing settings; fresh test frozen 14.3927 → adapted 11.9792 (Δ −2.4135, 95 % interval −2.999 to −1.902); exposed development test 15.0932 → 12.6567; reload parity on validation[:10] 10.512323 both ways, 3/3 candidates and embeddings identical. Details in *Hosted Colab T4 evaluation of record* below. Evidence in `docs/execution-evidence/2026-10-17-65e6a28/`: executed notebook SHA-256 `dd0180e8976d2f7cda4769bcd92877d5c2890182cb02bdc8fef4a589d5e2a082`, `run_summary.json` `022b5fe17c6adb8b64b07f32c3824389cb4bb7adfc92923079df61691ee371fb`, `exec.log` `cd5e97f190239df915148161a5482c7a5e3923770094c9fc7f85128f45395757` |
+| 2026-10-03 | `7b7346351c41aba32a427bd18d19083a5264b35b` / `218177a350884efbe139bc53dfcb360985dc5901` (earlier review-fix version; REL13: earlier-blob figures, not re-run on the current blob) | Colab CLI sequential execution (`colab exec -f`), fresh VM, Tesla T4 (`gpu: T4`, device `cuda:0`); not a browser `Run all`, so the saved notebook has no execution counts; cell order is taken from `exec.log` (cells 1..13 in sequence) | Default settings only (BYOD gated off, every form parameter at its default); no repository checkout; empty Hugging Face cache (all 8 snapshot files fetched) | 132.7 s | **one pass, no restart, 0 errors**; 13/13 code cells (cells 4-6 are carried module definitions with no output by design); executed code-cell sources identical to the blob; metrics below; [retained evidence](verification/2026-10-03-colab-t4/) |
 | 2026-09-19 | `1c8c93b` / `1d474b2f` | Kaggle Tesla T4 (`kurtvalcorza/dimer-nb2-bert-masked-lm` v4; image `torch 2.10.0+cu128` / `transformers 5.0.0` before the pinned install, `torch 2.14.0+cu130` / `transformers 4.57.6` after, Python 3.12.13, `cuda:0`) | Default sample path, `Run all` from a fresh interpreter with an empty Hugging Face cache and no repository checkout (blob SHA-1 verified against GitHub before execution) | 272.5 s | **2 passes — not a one-pass `Run all`, not promotion evidence (review MLM-M1)** — pass 1 stopped in the install cell with the stale-import `RuntimeError` (numpy loaded 2.0.2 / installed 2.5.3; cuda-bindings loaded 12.9.4 / installed 13.4.2); after an interpreter restart, pass 2 ran 11/11 code cells ok; 21 files, 447 MB staged from the Hub into a clean cache; comparison {perplexity: {unigram_floor: 1175, frozen: 15.09, adapted: 12.66}, bits_per_token: {unigram_floor: 10.2, frozen: 3.916, adapted: 3.662}, top1_accuracy: {unigram_floor: 0.0422, frozen: 0.5334, adapted: 0.5448}, top5_accuracy: {unigram_floor: 0.1488, frozen: 0.7013, adapted: 0.7211}, delta_vs_frozen: {perplexity: -2.437, bits_per_token: -0.254, top1_accuracy: 0.0114, top5_accuracy: 0.0198}}; reload parity {perplexity_in_memory: 14.74, perplexity_reloaded: 14.74, identical_candidates: 3, of: 3, embeddings_identical: True}; run summary and executed notebook archived under `.agent/backups/kaggle-e2e-2026-09-19/out/dimer-nb2-bert-masked-lm/v4/evidence/` in the workspace |
 | 2026-09-19 | `3311a68` / `1a9cb00f` | Local pre-flight harness (Windows, CPython 3.12.10, CPU float32, `torch 2.14.0+cu130` with `CUDA_VISIBLE_DEVICES=-1`, `transformers 4.57.6`) | Default sample path (install skipped, pins pre-installed → three carried modules → inline manifest assert → `stage_missing_files` fetched 0 of 8 entries because the snapshot was pre-staged → `verify_snapshot` 8 files → `from_pretrained` on CPU → `fetch_corpus` served from the pre-staged cache after its digest checks → 1,992 + 619 + 618 papers read, 300 / 50 / 100 drawn with `check_split_disjoint` clean and digests `50798982…` / `aea99f0e…` / `4fbbae3c…` → four dataset refusals → input manifest with the two-mask refusal → `fill_mask` on the unseen cloze (gold `problems`; frozen top-5 `systems situations phenomena events objects`) and `embed` of two test abstracts with all six sanity checks `True` → three unseen clozes filled → unigram floor → frozen evaluation → `adapt` → validation + test evaluation → clozes and embeddings after adaptation → adapter export → reload parity) | 233.1 s | **PASSED** — 11/11 code cells; unigram floor 1,174.6 (top-1 4.2 %, top-5 14.9 %); frozen test masked perplexity 15.09 (3.916 bits, top-1 53.3 %, top-5 70.1 %, 2,983 masked positions, 6.6 s); `fill_mask` 0.08 s, `embed` 0.11 s; `adapt` 28,351,488 of 109,514,298 params, 300 abstracts (63,625 interior tokens), 2 epochs, 206.9 s, validation perplexity 12.89 → 11.15 → 10.87 (`best_epoch` 2, train loss 2.633 → 2.618, top-1 54.5 → 55.7 %); **adapted test 12.59 (3.655 bits, top-1 54.8 %, top-5 72.2 %; Δ −2.50 perplexity, +1.5 / +2.0 points accuracy)**; clozes after adaptation: `problems` entered the top-5 (`applications problems systems phenomena situations`), `foveation` and `normalization` (multi-piece) matched neither before nor after; pair cosine 0.8624 → 0.8835, each vector's cosine to its frozen self 0.9466 / 0.9385; single-input report `not-measurable`; adapter 113,413,392 B / 64 tensors, SHA-256 `f1d2eb9d…`; reload parity exact (ten-record perplexity 14.966474 both ways, 3/3 identical candidate lists, embeddings identical); six exports written. Pre-flight; hosted clean-runtime run still required |
 | 2026-10-03 | review-fix head (generated from `18ee9f3`) / `218177a3` | Local CPU check (Windows, CPython 3.12.14, `torch 2.13.0+cpu` — not the pinned 2.14.0 —, `transformers 4.57.6`, float32, `CUDA_VISIBLE_DEVICES=-1`; shared host) | The 11 learner cells executed verbatim from the notebook JSON in one namespace (the two kernel cells skipped; `DIMER_NOTEBOOK_CI_PREINSTALLED=1`, as the isolated worker sets it; snapshot and corpus pre-staged by hard link, no download). Default path; then `TRAINABLE_LAYERS = 1` re-run from Section 7; `SEED = 1` re-run of Section 6; BYOD by `BYOD_PATH` with 20 unused SciTLDR test abstracts through Section 9; the same file plus one 638-token record. The probed code cells are byte-identical to this blob's; only markdown changed afterwards (worked answers citing these numbers) | about 20 min (shared host; adaptation 533 s) | **PASS — local check only, not promotion evidence.** Default: token budget longest 411 of 512, digests `50798982…` / `aea99f0e…` / `4fbbae3c…`, floor 1,174.57, frozen 15.093 (`adapted: False`), validation 12.89 → 11.15 → 10.87, adapted 12.5943 (verdict improved), adapter 64 tensors SHA-256 `f1d2eb9d…`, reload parity exact — identical to the previous version's pre-flight. `TRAINABLE_LAYERS = 1` re-run: the pretrained model reloaded, epoch 0 = 12.887 (the frozen value), 12.89 → 11.77 → 11.45, adapted 13.361 (delta −1.73 against −2.50), 16 tensors, 28,353,352 B, parity exact, run history 2 rows. `SEED = 1` Section 6 re-run: `adapted: False`, 14.2218 = a freshly loaded model at seed 1. BYOD: split 13 / 3 / 4, clozes `byod-test-00..02` labelled as test records, frozen 10.579 → adapted 10.058, parity exact. Over-ceiling record refused in Section 4: `train:too-long (638 tokens)` |
@@ -201,6 +203,158 @@ sample-sanity observations on a 100-abstract sample, not benchmark claims.
 Not exercised by this run: the BYOD positive and negative runs, the optional-experiment re-runs (`TRAINABLE_LAYERS`,
 `SEED`), and an equivalent Kaggle run.
 
+### Configuration re-selection on validation and the fresh test (2026-10-17, CPU build record)
+
+Review finding T5-1 (tutorial triage 2026-10-15, row 5): `TRAINABLE_LAYERS = 4` had been chosen by a three-configuration
+sweep scored on the 100-abstract **test** split (two layers at 1e-4: 12.96, four layers at 1e-4: 12.51, four layers at
+5e-5: 12.59; added in `3ff35cd`, build record no longer on disk). The owner ruled on 2026-10-17 to re-select on
+validation with a pre-registered grid and to report a fresh, never-scored test. The protocol was committed first, in
+`3fa61c9` (`docs/reselection-preregistration-2026-10-17.md`), before any configuration was trained; the fresh-test draw
+and its pinned paper-id digest were committed in `7649050`, also before any scoring.
+
+**CPU build record — a disclosed development look (score-once rule item 8: 2026-10-17, revision `602d058`), not the evaluation of record; the hosted Colab T4 run of 2026-10-17 below is.** Executor: local Windows CPU, CPython 3.12.14, `torch 2.14.0+cpu` (the pinned
+version), `transformers 4.57.6`, float32, `CUDA_VISIBLE_DEVICES=-1`; the 12 learner cells of the notebook generated at
+`602d058` executed verbatim in one namespace (the two kernel cells skipped, `DIMER_NOTEBOOK_CI_PREINSTALLED=1`, snapshot
+and corpus pre-staged by hard link). That notebook's code cells equal those of the committed blob except the stamped
+revision and the `RECORDED_SELECTION` literal, which the grid cell reads only when `RUN_GRID` is off; its markdown
+predates the worked answers. Not clean-runtime or hosted evidence. Wall time 1,316 s (grid 874 s, re-training of the
+pick 334 s). Executed copies: [`verification/2026-10-17-cpu-build/`](verification/2026-10-17-cpu-build/). In those copies the local working directory of the run was redacted to `<workdir>` in 10 output strings (8 in the BYOD-refused copy, 1 each in the default and Section 10 copies), keeping the relative tail (for example `<workdir>\weights\bert-base-uncased`); nothing else in them was changed, so they are no longer byte-identical to the files the run wrote.
+
+Fixed settings: `EPOCHS` 2, `BATCH_SIZE` 8, `MASK_RATE` 0.15, `SEED` 0, `SPLIT_SEED` 42. Metric: best-epoch validation
+masked perplexity on the 50 validation abstracts. Rule: v* = lowest metric; pick the first of B → A → C within
+τ = 0.10 of v*; keep it only if it is below the frozen validation perplexity minus τ.
+
+| Config | Layers | LR | Validation perplexity by epoch | Best | Within τ of v* | Seconds |
+|---|---|---|---|---|---|---|
+| B | 2 | 5e-5 | 12.8871 → 11.52 → 11.2183 | 11.2183 | no (+0.351) | 276.6 |
+| A | 4 | 5e-5 | 12.8871 → 11.15 → 10.8676 | **10.8676 = v*** | yes | 304.6 |
+| C | 4 | 1e-4 | 12.8871 → 11.05 → 10.8865 | 10.8865 | yes (+0.019) | 290.7 |
+
+**Winner: A** (four layers at 5e-5, the previous default), the first of B → A → C within τ; kept, since 10.8676 is
+2.02 below the frozen validation perplexity 12.8871. The re-trained pick reproduced the grid run exactly
+(`matches_grid_run: True`). B and C were never scored on a test split.
+
+**Fresh test (scored only under the pre-registered settings):** 100 SciTLDR-A `dev` abstracts drawn with `random.Random(20261017)` from the 559 that are in
+no split and not among the clozes, de-duplicated by text against every used text, asserted paper- and text-disjoint
+from the training, validation and exposed splits and the clozes; sorted paper-id SHA-256 `d78105385a284abfae3245d32de5568966c364eb90f97532c1ba37761f6c9204`
+(ids in `docs/fresh-test-paper-ids-2026-10-17.txt`), dataset digest `fbcaa0b778b18efc…`, 3,214 masked positions. That
+these 559 were never scored rests on the code of every earlier revision (the only scored `dev` split is validation;
+the clozes are only filled; the 2026-10-03 BYOD check used SciTLDR **test** abstracts); the earlier sweep's build record
+no longer exists, so it cannot be checked against it.
+
+| Split | Unigram floor | Frozen | Adapted (A) | Δ perplexity | Top-1 frozen → adapted | Top-5 frozen → adapted |
+|---|---|---|---|---|---|---|
+| **Fresh test** (development look, CPU) | 1,237.84 | 14.3925 | **11.9667** | **−2.4258** | 54.54 → 55.44 % | 71.38 → 72.71 % |
+| Exposed development test (seen by the superseded sweep) | — | 15.0930 | 12.5943 | −2.4987 | — | — |
+
+**Old → new for every number the notebook reports** (old = the notebook text at `da560a6`, the CPU pre-flight of
+blob `1a9cb00f` / the local check of blob `218177a3`; new = this record):
+
+| Quantity | Old | New |
+|---|---|---|
+| Reported test split | old 100-abstract `test` draw | fresh 100-abstract `dev` draw (the old one is the exposed development test) |
+| Unigram floor perplexity (top-1) | 1,174.6 (4.2 %) on the old test | 1,237.84 (3.7 %) on the fresh test |
+| Frozen test perplexity (top-1, top-5) | 15.09 (53.3 %, 70.1 %) | 14.39 (54.5 %, 71.4 %); exposed 15.09 |
+| Configuration and how chosen | 4 layers @ 5e-5, test sweep | 4 layers @ 5e-5 (A), validation grid |
+| Validation perplexity of the pick | 12.89 → 11.15 → 10.87 | 12.89 → 11.15 → 10.87 (unchanged) |
+| Adapted test perplexity (Δ) | 12.59 (−2.50), T4 12.66 | 11.97 (−2.43) on the fresh test; exposed 12.59 (−2.50) |
+| Adapted top-1 / top-5 | 54.8 % / 72.2 % | 55.4 % / 72.7 % |
+| Longest record | 411 of 512 tokens (450 records) | 411 of 512 tokens (550 records) |
+| Section 5 cloze and pair | `problems`; top score 0.107; pair cosine 0.8624 | unchanged |
+| Section 9 cosines to frozen self, pair after | 0.9466 / 0.9385; 0.8835 | unchanged |
+| Reload parity | ten **test** records, 14.966474, "exact" | ten **validation** records, 10.284235 both ways, within 1e-6; candidates and embeddings identical |
+| Adapter | 64 tensors, 113,413,392 B, `f1d2eb9d…` | unchanged |
+| Section 10, one layer | test 13.36 (Δ −1.73); val 12.89 → 11.77 → 11.45 | validation only: 12.89 → 11.77 → 11.45 (Δ −1.43 vs −2.02); test not scored; 16 tensors, 28,353,352 B; parity held |
+| CPU time of one 4-layer adaptation | 206.9 s (pre-flight) | 304.6 s in the grid, 334.0 s re-trained (shared host) |
+
+BYOD refusal journey (same record): a JSONL file with 11 distinct documents printed one `byod_refused` message naming the
+file and the split rule (no traceback); Sections 5–9 printed `skipped`; `outputs/bert_masked_lm_run_status.json` was set
+to `invalidated`.
+
+### Fresh-test score-once rule and reproductions (2026-10-17, review round 2)
+
+The fresh test is scored only when every pre-registered setting holds: the SciTLDR-A sample (no BYOD),
+`SPLIT_SEED` 42, `EPOCHS` 2, `BATCH_SIZE` 8, `MASK_RATE` 0.15, `SEED` 0 and the recorded pick (A: four layers at
+5e-5, no `TRAINABLE_LAYERS_OVERRIDE`). Section 7 computes the list of settings that differ; any difference makes
+the run **exploratory**: it is compared on validation only, its reports go to numbered
+`*_exploratory_<n>.json` files and its adapter to `outputs/bert_masked_lm_adapter_exploratory_<n>`, and the
+pre-registered files are left alone. `TOP_K`, `POOLING` and `RUN_GRID` do not change any scored quantity (a
+re-measured grid that picks a different configuration does make the run exploratory). Every report carries
+`test_look` (`pre-registered evaluation`, `reproduction` or `not scored (exploratory)`) and
+`settings_differing_from_preregistration`; pre-registered passes are appended to
+`outputs/bert_masked_lm_preregistered_evaluations.json`.
+
+**Recorded evaluation.** The evaluation of record is the hosted Colab T4 run of 2026-10-17 at `65e6a28` (*Hosted Colab T4 evaluation of record* below). The CPU numbers above (fresh test 14.39 → 11.97) are a disclosed development look: the local CPU
+build record. The first hosted Colab run of the pre-registered settings is the evaluation; record it here and set
+`RECORDED_EVALUATION` in Section 8, after which every later identical run, in any runtime, is labelled a
+**reproduction** of it (provided nothing was changed in response to the test number).
+
+**Reproductions.** The round-2 CPU re-run (same host and pins, uncommitted round-2 code) reproduced every number of
+the record: floor 1,237.8358, frozen 14.3925, adapted 11.9667 (Δ −2.4258), exposed 15.09 → 12.5943, validation
+12.8871 → 11.15 → 10.8676. A second pass of Section 8 in the same runtime was labelled `reproduction`; the
+Section 10 one-layer run was labelled `not scored (exploratory)` with `['TRAINABLE_LAYERS']` differing and wrote
+`_exploratory_1` files. Paired bootstrap of the fresh-test Δ (100 records resampled with replacement, both models
+paired on the same masks, 1,000 resamples, seed 0): **95 % interval −3.018 to −1.915**; it reflects record
+sampling only, not mask or training-seed variation. Near-duplicate check (8-word sequences, threshold 30 %): 0
+records outside training.
+
+### Hosted Colab T4 evaluation of record (2026-10-17, Colab account 2)
+
+REL13: every number in this section is from the output notebook of the hosted run of 12:40:15 UTC in Recorded
+executions (commit `65e6a28`, blob `6d4e7d99`, fresh Colab Tesla T4 on Colab account 2, Colab CLI 0.7.4 sequential
+execution, 14/14 code cells, 0 errors, 275.2 s). It is the first hosted run of the pre-registered settings, so it is
+**the pre-registered evaluation of record** (score-once rule items 3 and 8); later identical hosted runs are
+reproductions. Section 8 printed `test_look` `pre-registered evaluation` and `settings_differing_from_preregistration`
+`[]`; Section 7 printed `run_role` `pre-registered`, config A, `matches_grid_run` True. The CPU build record above is a
+development look and does not change this.
+
+Grid (measured in this run, validation masked perplexity on the 50 validation abstracts, frozen 12.8872):
+
+| Config | Layers | LR | Validation perplexity by epoch | Best | Seconds |
+|---|---|---|---|---|---|
+| B | 2 | 5e-5 | 12.89 → 11.54 → 11.28 | 11.2772 | 21.9 |
+| A | 4 | 5e-5 | 12.89 → 11.14 → 10.91 | **10.9148 = v*** | 26.4 |
+| C | 4 | 1e-4 | 12.89 → 11.09 → 11.05 | 11.0470 | 27.5 |
+
+**Winner: A** (τ = 0.1; within τ of v*: A only; kept, below the frozen validation perplexity minus τ). The re-trained
+pick reproduced the grid run (`matches_grid_run` True), best epoch 2, 28,351,488 trainable of 109,514,298 parameters.
+
+| Split (3,214 masked positions on the fresh test) | Unigram floor | Frozen | Adapted (A) | Δ perplexity | Top-1 frozen → adapted | Top-5 frozen → adapted |
+|---|---|---|---|---|---|---|
+| **Fresh test** (evaluation of record) | 1,237.8358 | 14.3927 | **11.9792** | **−2.4135** (95 % interval −2.999 to −1.902) | 54.54 → 55.32 % | 71.38 → 72.74 % |
+| Exposed development test (seen by the superseded sweep; not the held-out result) | — | 15.0932 | 12.6567 | −2.4365 | — | — |
+
+Bits per masked token on the fresh test 3.8473 → 3.5825 (Δ −0.2648). The interval is the notebook's paired bootstrap
+(100 records resampled with replacement, masks and trained model fixed); it reflects record sampling only. Verdict
+printed: `improved: the adapted masked perplexity on the fresh test is below the frozen one`. Reload parity on
+validation[:10]: 10.512323 in memory and reloaded (within 1e-6), 3/3 cloze candidates and embeddings identical.
+
+Against the CPU development look (revision `602d058`): same winner A and same fresh-test frozen value to three
+decimals (14.3927 vs 14.3925); adapted 11.9792 vs 11.9667, Δ −2.4135 vs −2.4258, interval −2.999 to −1.902 vs −3.018
+to −1.915, exposed 15.0932 → 12.6567 vs 15.0930 → 12.5943; grid B / A / C 11.2772 / 10.9148 / 11.0470 vs
+11.2183 / 10.8676 / 10.8865 (on CPU, C was also within τ; on T4 only A was). These are cross-runtime differences of
+training (GPU vs CPU kernels); no setting was changed in response to any test number.
+
+Follow-ups done in a later revision of PR #9 (the requote): Section 8's `RECORDED_EVALUATION` now names this run, so
+a later hosted run with the pre-registered settings prints `test_look` `reproduction` with `reproduction_of` this run;
+`RECORDED_SELECTION` (used only with `RUN_GRID` off) and the notebook's worked answers quote the figures above, and
+the CPU build record is quoted only as a labelled development look. Prose and constants only; no computed value changed.
+
+### Hosted Colab T4 reproduction of the pre-registered evaluation (2026-10-17, Colab account 2)
+
+REL13: reproduction of the pre-registered evaluation. The requoted blob `29046e22` (commit `b6ac4da`; prose and
+constants only, see the follow-ups above) ran the default pre-registered path on a fresh Colab Tesla T4 on Colab
+account 2 (Colab CLI 0.7.4 sequential execution, 14/14 code cells, 0 errors, 219.0 s; first row of Recorded
+executions). Section 8 printed `test_look` `reproduction`, `settings_differing_from_preregistration` `[]` and
+`reproduction_of` the evaluation of record. A normalised line diff of the two output notebooks finds every printed
+figure equal: grid 11.2772 / 10.9148 / 11.0470 (winner A), fresh test 1,237.8358 / 14.3927 / 11.9792 (Δ −2.4135,
+interval −2.999 to −1.902), bits 3.8473 → 3.5825, top-1 0.5454 → 0.5532, top-5 0.7138 → 0.7274, exposed
+development test 15.0932 → 12.6567, reload parity 10.512323, cloze candidates. Only run-specific values differ:
+timings (setup 53 s vs 50 s; grid 22.0 / 26.5 / 27.9 s vs 21.9 / 26.4 / 27.5 s; re-training 26.9 s vs 29.1 s), the
+carried revision, and the adapter SHA-256 prefix (`4e56e00a…` vs `6ee20bb1…`, same 64 tensors and 113,413,392 bytes):
+the saved weights differ at bit level between the two GPU runs while every printed metric is equal. The evaluation
+of record is unchanged.
+
 ## Current status
 
-**Candidate.** The notebook was regenerated on 2026-10-03 (review fixes MLM-M1..M4 / MLM-m1..m5, isolated runtime) and a hosted Colab T4 run of the new blob (`218177a3` at `7b73463`) is recorded above: default path, 13/13 code cells in one pass with no restart and 0 errors (Colab CLI sequential execution, not a browser `Run all`). The previous blob `1d474b2f` (committed at `1c8c93b`) completed on a clean Kaggle Tesla T4 runtime on 2026-09-19 only in 2 passes, with an interpreter restart after the install cell (272.5 s for pass 2, 21 files, 447 MB fetched from the Hub and digest-verified inside the notebook); a restart-dependent run is not a one-pass `Run all` (NOTEBOOK_SPEC §5, RUN10), so that row was never Release-grade evidence and is kept as history. It stays Candidate: promotion still needs a BYOD positive and negative run and an optional experiment re-run as instructed, an equivalent Kaggle run, and maintainer review of that evidence, recorded here.
+**Candidate.** The 2026-10-17 review fix (T5-1..T5-8) changed the notebook blob; the blob `6d4e7d99` (commit `65e6a28`) completed one pass with 0 errors on a fresh Colab Tesla T4 on 2026-10-17, Colab account 2 (Colab CLI 0.7.4 sequential execution, not a browser Run all; 14/14 code cells, 275.2 s). This run is the pre-registered evaluation of record (`test_look` `pre-registered evaluation`, no setting differing from the pre-registration). REL13: hosted Colab T4, blob `6d4e7d99` — grid winner A (four layers at 5e-5, validation 10.9148); fresh-test masked perplexity frozen 14.3927 → adapted 11.9792 (Δ −2.4135, paired-bootstrap 95 % interval −2.999 to −1.902); exposed development test 15.0932 → 12.6567; see *Hosted Colab T4 evaluation of record*. The CPU build record (revision `602d058`, fresh test 14.39 → 11.97) is a disclosed development look. The requoted blob `29046e22` (commit `b6ac4da`, PR #9 head) then completed one pass with 0 errors on a fresh Colab Tesla T4 on 2026-10-17, Colab account 2 (Colab CLI 0.7.4 sequential execution, not a browser Run all; 14/14 code cells, 219.0 s). REL13: reproduction of the pre-registered evaluation, this blob — Section 8 printed `test_look` `reproduction` with no setting differing, and every grid, fresh-test, exposed-test and reload figure equals the evaluation of record. REL13: the earlier history that follows describes earlier blobs, not re-run on the current blob. Earlier history: The notebook was regenerated on 2026-10-03 (review fixes MLM-M1..M4 / MLM-m1..m5, isolated runtime) and a hosted Colab T4 run of the new blob (`218177a3` at `7b73463`) is recorded above: default path, 13/13 code cells in one pass with no restart and 0 errors (Colab CLI sequential execution, not a browser `Run all`). The previous blob `1d474b2f` (committed at `1c8c93b`) completed on a clean Kaggle Tesla T4 runtime on 2026-09-19 only in 2 passes, with an interpreter restart after the install cell (272.5 s for pass 2, 21 files, 447 MB fetched from the Hub and digest-verified inside the notebook); a restart-dependent run is not a one-pass `Run all` (NOTEBOOK_SPEC §5, RUN10), so that row was never Release-grade evidence and is kept as history. It stays Candidate: promotion still needs a BYOD positive and negative run and an optional experiment re-run as instructed, an equivalent Kaggle run, and maintainer review of that evidence, recorded here.

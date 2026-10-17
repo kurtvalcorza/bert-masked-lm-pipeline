@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # the provenance test reads the stamped revision's modules (review T5-6)
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -26,7 +28,7 @@ jobs:
         run: pytest
       - name: Validate tutorial and model-card source
         run: python tools/validate_release_assets.py
-      - name: Standalone notebook parity (NOTEBOOK_SPEC 2.2 PAR3)
+      - name: Standalone notebook parity (NOTEBOOK_SPEC 2.5 PAR3)
         run: python tools/build_notebook.py --check
 
   release-evidence-boundary:

@@ -61,16 +61,20 @@ def masked_metrics(scores: Sequence[Sequence[tuple[float, int]]]) -> dict[str, A
     n_masked = 0
     top1 = 0
     top5 = 0
+    per_record = []
     for record_scores in scores:
         if not record_scores:
             raise ValueError("a record scored no masked positions")
+        record_total = 0.0
         for nll, rank in record_scores:
             if rank < 1:
                 raise ValueError("rank must be 1 or more")
-            total += float(nll)
+            record_total += float(nll)
             n_masked += 1
             top1 += rank == 1
             top5 += rank <= 5
+        total += record_total
+        per_record.append([record_total, len(record_scores)])
     mean_nll = total / n_masked
     return {
         "n_records": len(scores),
@@ -80,7 +84,49 @@ def masked_metrics(scores: Sequence[Sequence[tuple[float, int]]]) -> dict[str, A
         "bits_per_token": mean_nll / math.log(2),
         "top1_accuracy": top1 / n_masked,
         "top5_accuracy": top5 / n_masked,
+        "per_record": per_record,
         "definitions": dict(METRIC_DEFINITIONS),
+    }
+
+
+def paired_bootstrap_delta(
+    reference: dict[str, Any],
+    candidate: dict[str, Any],
+    *,
+    n_boot: int = 1000,
+    seed: int = 0,
+    level: float = 0.95,
+) -> dict[str, Any]:
+    """Percentile interval for candidate minus reference masked perplexity, resampling records with
+    replacement (paired: both models' summed NLL and masked-token count of the same record move together).
+
+    Both metric dicts must come from the same records in the same order under the same masks (equal
+    per-record masked counts), so the interval reflects record sampling only, not mask or training noise."""
+    a, b = reference["per_record"], candidate["per_record"]
+    if len(a) != len(b) or any(x[1] != y[1] for x, y in zip(a, b, strict=True)):
+        raise ValueError("paired bootstrap needs the same records scored at the same masked positions")
+    if not 0.0 < level < 1.0 or n_boot < 10:
+        raise ValueError("level must be in (0, 1) and n_boot at least 10")
+    n = len(a)
+    rng = random.Random(seed)
+
+    def delta(indices: Sequence[int]) -> float:
+        count = sum(a[i][1] for i in indices)
+        return math.exp(sum(b[i][0] for i in indices) / count) - math.exp(
+            sum(a[i][0] for i in indices) / count
+        )
+
+    draws = sorted(delta([rng.randrange(n) for _ in range(n)]) for _ in range(n_boot))
+    low = draws[int((1.0 - level) / 2.0 * n_boot)]
+    high = draws[min(n_boot - 1, int((1.0 + level) / 2.0 * n_boot) - 1)]
+    return {
+        "delta": delta(range(n)),
+        "ci_low": low,
+        "ci_high": high,
+        "level": level,
+        "n_boot": n_boot,
+        "seed": seed,
+        "resampled": f"{n} records, paired, with replacement; masks and trained model fixed",
     }
 
 

@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import Any
 
 GENERATOR_VERSION = "build_notebook.py/2.1"
-NOTEBOOK_SPEC = "2.2"
+NOTEBOOK_SPEC = "2.5"
 
 # /2.1: the `isolated_runtime` environment is the fleet's version 2.2 reference mechanism (ast-audio-classification-pipeline
 # and bioclip2-biodiversity-pipeline): a pinned uv wheel verified by size and SHA-256, a managed CPython of a fixed
@@ -206,6 +206,8 @@ def template_contract() -> dict[str, str]:
         "managed_python": "OPTIONAL (required with isolated_runtime): exact CPython version uv installs for the isolated environment",
         "uv": "OPTIONAL (required with isolated_runtime): {'version', 'url', 'bytes', 'sha256'} of the pinned manylinux x86_64 uv wheel",
         "lock": "OPTIONAL (required with isolated_runtime): repository-relative hash-locked requirements compiled from the pyproject pins",
+        "kind": "OPTIONAL str: metadata.dimer.notebook_kind (NOTEBOOK_SPEC 2.5 KND1), e.g. TUTORIAL",
+        "use_notice": "OPTIONAL str: the DOC17 use notice, a markdown blockquote placed after the title and badges",
         "infrastructure_labels": "OPTIONAL bool (default False): label Sections 1-3 as Infrastructure and collapse the carried-module source (NOTEBOOK_SPEC 2.2 GDL11)",
         "model_host": "OPTIONAL {name, reference_url, revision_label} for a non-Hub checkpoint host (default: Hugging Face Hub, https://huggingface.co/<MODEL_ID>, 'revision'); the package's own stage_missing_files downloader must fetch from it",
     }
@@ -408,17 +410,32 @@ def _isolated_install(ctx: dict[str, Any], template: dict[str, Any], pins_litera
     )
 
 
-def _head_revision(repo: Path) -> str:
+def _head_revision(repo: Path, module_rels: list[str] | None = None) -> str:
     """The repository revision the notebook is generated from (ST5): HEAD at generation time.
 
     A provenance label only; the parity anchor is the module SHA-256, so a later commit that carries
-    the regenerated notebook does not invalidate it (see ``--check``).
+    the regenerated notebook does not invalidate it (see ``--check``). The stamp must name a commit that
+    holds the carried modules: generation refuses a working tree whose carried modules differ from HEAD
+    (review T5-6: a notebook stamped 18ee9f3 carried code that only existed in an uncommitted tree).
     """
     try:
         out = subprocess.check_output(["git", "-C", str(repo), "rev-parse", "HEAD"], text=True).strip()
     except (OSError, subprocess.CalledProcessError):
         out = ""
-    return out or "uncommitted"
+    if not out:
+        return "uncommitted"
+    for rel in module_rels or []:
+        try:
+            committed = subprocess.check_output(["git", "-C", str(repo), "show", f"{out}:{rel}"])
+        except (OSError, subprocess.CalledProcessError):
+            committed = None
+        current = (repo / rel).read_bytes()
+        if committed is None or committed.replace(b"\r\n", b"\n") != current.replace(b"\r\n", b"\n"):
+            raise SystemExit(
+                f"{rel} differs from HEAD {out[:12]}: commit the carried modules before generating, so the "
+                "provenance stamp names a revision that holds the code the notebook carries (ST5)"
+            )
+    return out
 
 
 def recorded_revision(notebook_path: Path) -> str | None:
@@ -497,7 +514,7 @@ def load_context(repo: Path, template: dict[str, Any], revision: str | None = No
         "embedded": apply_rewrites(texts, rewrites),
         "module_sha256": hashlib.sha256("".join(texts[m] for m in order).encode("utf-8")).hexdigest(),
         "per_module_sha256": {f"{pkg_rel}/{m}": hashlib.sha256(texts[m].encode("utf-8")).hexdigest() for m in order},
-        "module_revision": revision or _head_revision(repo),
+        "module_revision": revision or _head_revision(repo, rel),
         "manifest": manifest,
         "extra_weights": extra,
         "pins": pins,
@@ -582,7 +599,8 @@ def render(repo: Path, template: dict[str, Any], revision: str | None = None) ->
     )
     header = (
         f"# {template['title']}\n\n{badges}\n\n"
-        f"**Profile:** `{template['profile']}`  \n"
+        + (f"{template['use_notice'].strip()}\n\n" if template.get("use_notice") else "")
+        + f"**Profile:** `{template['profile']}`  \n"
         f"**Mode:** `{mode}`  \n"
         f"**Notebook specification:** DIMER Notebook Specification {NOTEBOOK_SPEC} — **standalone** (§4)  \n"
         f"**Capability:** {template['capability']}\n\n"
@@ -776,6 +794,7 @@ def render(repo: Path, template: dict[str, Any], revision: str | None = None) ->
             "dimer": {
                 "notebook_profile": template["profile"],
                 "notebook_mode": mode,
+                **({"notebook_kind": template["kind"]} if template.get("kind") else {}),
                 "notebook_spec": NOTEBOOK_SPEC,
                 "standalone": True,
                 "generated_from": {
