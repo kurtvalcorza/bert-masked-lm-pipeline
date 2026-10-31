@@ -97,7 +97,12 @@ def _run_section4(notebook: dict, tmp_path: Path, monkeypatch, *, byod_path: str
     monkeypatch.chdir(tmp_path)
     ns = _carried_namespace()
     ns["pipe"] = _tokenizer_only_pipe()
-    exec(compile(source, "<section 4>", "exec"), ns)
+    try:
+        exec(compile(source, "<section 4>", "exec"), ns)
+    except Exception as exc:  # DAT20: a refusal stops the cell; anything else is a genuine failure
+        if not getattr(exc, "dimer_refusal", False):
+            raise
+        ns["_refusal"] = exc
     return ns
 
 
@@ -293,10 +298,11 @@ def test_section_4_accepts_twenty_records_and_reports_duplicates(notebook, tmp_p
 
 
 def _refused(ns: dict, capsys, pattern: str) -> None:
-    """DAT20: a refusal is one printed message and an invalidated run, not an exception."""
+    """DAT20: a refusal raises one ``Refused: <file>: <reason>`` line (no traceback) and invalidates the run."""
     out = capsys.readouterr().out
     assert ns["RUN_STATE"]["refused"] and re.search(pattern, ns["RUN_STATE"]["refused"]), ns["RUN_STATE"]
-    assert "'byod_refused'" in out and "Run after" in out and "Traceback" not in out
+    (line,) = ns["_refusal"]._render_traceback_()
+    assert line.startswith("Refused: ") and "\n" not in line and "Run after" in line and "Traceback" not in out + line
     assert "train_records" not in ns and "test_records" not in ns
 
 

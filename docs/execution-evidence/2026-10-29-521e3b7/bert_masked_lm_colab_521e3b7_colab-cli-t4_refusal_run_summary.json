@@ -1,0 +1,72 @@
+{
+  "repo": "bert-masked-lm-pipeline",
+  "sha": "521e3b78f043f8cc7fccfeb0ee49fad0b2247552",
+  "notebook": "tutorials/bert_masked_lm_colab.ipynb",
+  "blob": "5a2ca62006cfae27523503bd2d2b3911612e206e",
+  "gpu": "T4",
+  "session": "suite-bert-521e3b7-b860",
+  "started_utc": "2026-10-29T15:49:20+00:00",
+  "runner": "Colab CLI `colab exec -f` on a fresh session (not a browser Run all)",
+  "overrides": [
+    {
+      "name": "USE_BYOD",
+      "from": "False",
+      "to": "True"
+    },
+    {
+      "name": "BYOD_PATH",
+      "from": "''",
+      "to": "'/etc/hostname'"
+    }
+  ],
+  "run_copy_blob": "d3f2839894c15cabf72625ef508cc2b535734a63",
+  "run_copy_sha256": "cb6c22c5977bdca8ebcc45692cb93b6f5e70e2a951a514e8d87d208a08d4e328",
+  "run_copy_note": "refusal run: the run copy is the committed notebook with the listed assignment overrides, cut immediately after the refusal cell and re-serialised (nbformat layout); input_unchanged compares against that copy",
+  "truncated_after_cell": "bert_masked_lm-17",
+  "refusal_cell_ref": "bert_masked_lm-17",
+  "refusal_cell_index": 8,
+  "cells_dropped": 13,
+  "code_cells_dropped": 6,
+  "original_sha256": "d08a434e1f279dc76518a4bd12b8ce24961dec43ccc516e3aad42ad95cc046cf",
+  "status": "[suite-bert-521e3b7-b860] gpu-t4-s-usw4b0-ifxordcivv2p | Hardware: T4 | Shape: Standard | Variant: GPU | Status: IDLE",
+  "exec_exit_code": 0,
+  "stopped": true,
+  "stop_verified": true,
+  "wall_s": 196.6,
+  "input_unchanged": true,
+  "executed_file": "bert_masked_lm_colab_521e3b7_colab-cli-t4_output.ipynb",
+  "log_cells": [
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8
+  ],
+  "log_total": 8,
+  "code_cells": 8,
+  "executed_cells": 5,
+  "errors": [
+    {
+      "cell": "bert_masked_lm-17",
+      "ename": "IsolatedCellRefusal",
+      "evalue": "hostname: BYOD corpora must be .csv, .json, .jsonl or .txt. Sections 5-9 skip until this cell accepts an input (run it again with Runtime -> Run after), and files already in outputs/ are from an earlier run."
+    }
+  ],
+  "execution_counts": [],
+  "sequential": null,
+  "executed_sha256": "bf31a3391c2b9fa3232a7ba61450d76da24fcd4a33c4130c1e31943dc4d924e4",
+  "log_sequential_complete": true,
+  "mode": "expect_refusal",
+  "refusal_line": "Refused: hostname: BYOD corpora must be .csv, .json, .jsonl or .txt. Sections 5-9 skip until this cell accepts an input (run it again with Runtime -> Run after), and files already in outputs/ are from an earlier run.",
+  "halting_cell_index": 8,
+  "halting_cell_id": "bert_masked_lm-17",
+  "error_cells": [
+    8
+  ],
+  "refusal_fail_reasons": [],
+  "refusal_ok": true,
+  "verdict": "PASS"
+}
